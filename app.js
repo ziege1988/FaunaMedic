@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
 const MAX_PHOTOS = 3;
@@ -717,7 +717,7 @@ function renderSettings(v) {
       <div class="card-head">${ICON.key}<h3>KI-Schlüssel (Google Gemini)</h3></div>
       <p class="small muted">Kostenlos, ohne Kreditkarte. Der Schlüssel wird nur auf diesem Gerät gespeichert.</p>
       <label class="field" style="margin-top:12px"><span>API-Schlüssel</span>
-        <input type="password" id="api-key" value="${esc(s.apiKey)}" placeholder="AIza…" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <input type="password" id="api-key" value="${esc(s.apiKey)}" placeholder="AQ.… oder AIza…" autocomplete="off" autocapitalize="off" spellcheck="false">
       </label>
       <label class="field" style="margin-top:12px"><span>KI-Modell</span>
         <input type="text" id="model" value="${esc(s.model)}" placeholder="auto" autocapitalize="off" spellcheck="false">
@@ -777,7 +777,7 @@ function renderHelp(v) {
         <li>Öffne <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></li>
         <li>Mit deinem Google-Konto anmelden und den Nutzungsbedingungen zustimmen.</li>
         <li>Auf <b>„API-Schlüssel erstellen“</b> tippen.</li>
-        <li>Den Schlüssel (beginnt mit <code>AIza</code>) kopieren.</li>
+        <li>Den Schlüssel über „Copy key“ / „Schlüssel kopieren“ vollständig kopieren (beginnt meist mit <code>AQ.</code>, ältere mit <code>AIza</code>).</li>
         <li>Hier in Flora Medici unter <b>Einstellungen</b> einfügen, „Testen“ und „Speichern“.</li>
       </ol>
     </div>

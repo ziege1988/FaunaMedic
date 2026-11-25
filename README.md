@@ -40,7 +40,7 @@ zu dunkel, Schädlinge, Krankheiten – und dir persönlich erklärt, was du tun
 - **Android (Chrome):** Seite öffnen → Menü ⋮ → „App installieren“
 
 ### 3. Kostenlosen KI-Schlüssel hinterlegen
-1. <https://aistudio.google.com/apikey> öffnen, mit Google-Konto anmelden, „API-Schlüssel erstellen“.
+1. <https://aistudio.google.com/apikey> öffnen, mit Google-Konto anmelden, „API-Schlüssel erstellen“, dann über „Copy key“ vollständig kopieren (neue Schlüssel beginnen mit `AQ.`).
 2. In Flora Medici → ⚙️ Einstellungen → Schlüssel einfügen → „Testen“ → „Speichern“.
 3. **Kein Billing in Google AI Studio aktivieren** – dann bleibt es garantiert kostenlos.
 

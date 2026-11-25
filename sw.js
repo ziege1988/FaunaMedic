@@ -3,7 +3,7 @@
  * (= automatische Updates). Offline wird die zuletzt gespeicherte Version genutzt.
  * Bei jeder Veröffentlichung CACHE_VERSION erhöhen.
  */
-const CACHE_VERSION = 'floramedici-v1.1.0';
+const CACHE_VERSION = 'floramedici-v1.1.1';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
   'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
