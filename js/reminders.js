@@ -79,11 +79,15 @@ async function gh(path, opts = {}, s = pushSettings()) {
   if (!res.ok) {
     let msg = '';
     try { msg = (await res.json()).message || ''; } catch { /* egal */ }
+    let accepted = '';
+    try { accepted = res.headers.get('x-accepted-github-permissions') || ''; } catch { /* egal */ }
+    const need = opts.need ? ` Benötigt: ${opts.need}.` : '';
     const hint = res.status === 401 ? 'GitHub-Zugangsschlüssel ungültig oder abgelaufen.'
-      : res.status === 403 ? 'Dem GitHub-Zugangsschlüssel fehlen Rechte (Secrets und Actions: Lesen und Schreiben).'
-        : res.status === 404 ? 'Repository oder Workflow nicht gefunden – stimmt der Name, und hat der Schlüssel Zugriff darauf?'
-          : `GitHub-Fehler ${res.status}: ${msg}`;
-    throw Object.assign(new Error(hint), { status: res.status });
+      : res.status === 403 ? `Dem GitHub-Zugangsschlüssel fehlt ein Recht.${need}`
+        : res.status === 404 ? `Nicht gefunden – stimmt Konto/Repository, und hat der Schlüssel Zugriff auf genau dieses Repository?${need}`
+          : `GitHub-Fehler ${res.status}.`;
+    const detail = [msg && `GitHub: „${msg}“`, accepted && `(${accepted})`].filter(Boolean).join(' ');
+    throw Object.assign(new Error(`${hint}${detail ? ` ${detail}` : ''}`), { status: res.status });
   }
   return res.status === 204 || res.status === 201 ? null : res.json().catch(() => null);
 }
@@ -122,20 +126,30 @@ export async function sealedBox(message, publicKeyB64) {
 
 let repoKey = null;
 async function setSecret(name, value, s) {
-  if (!repoKey) repoKey = await gh('/actions/secrets/public-key', {}, s);
+  if (!repoKey) repoKey = await gh('/actions/secrets/public-key', { need: 'Secrets → Read and write' }, s);
   const encrypted_value = await sealedBox(value, repoKey.key);
-  await gh(`/actions/secrets/${name}`, { method: 'PUT', body: JSON.stringify({ encrypted_value, key_id: repoKey.key_id }) }, s);
+  await gh(`/actions/secrets/${name}`, { method: 'PUT', need: 'Secrets → Read and write', body: JSON.stringify({ encrypted_value, key_id: repoKey.key_id }) }, s);
 }
 
 async function dispatch(mode, s = pushSettings()) {
-  const info = await gh('', {}, s);
-  await gh('/actions/workflows/push.yml/dispatches', { method: 'POST', body: JSON.stringify({ ref: info.default_branch, inputs: { mode } }) }, s);
+  const info = await gh('', { need: 'Zugriff auf das Repository' }, s);
+  await gh('/actions/workflows/push.yml/dispatches', { method: 'POST', need: 'Actions → Read and write', body: JSON.stringify({ ref: info.default_branch, inputs: { mode } }) }, s);
 }
 
 /* ------------------------------------------------------------------ *
  * Einrichtung (muss direkt aus einem Fingertipp heraus gestartet werden)
  * ------------------------------------------------------------------ */
-export async function setupPush({ token, time }, plants, onStep = () => {}) {
+export async function setupPush({ token, time }, plants, onStepRaw = () => {}) {
+  let step = 'Start';
+  const onStep = (t) => { step = t.replace(/ …$/, ''); onStepRaw(t); };
+  try {
+    return await setupPushInner({ token, time }, plants, onStep);
+  } catch (e) {
+    throw Object.assign(new Error(`Schritt „${step}“: ${e.message}`), { status: e.status });
+  }
+}
+
+async function setupPushInner({ token, time }, plants, onStep) {
   if (!pushSupported()) throw new Error('Dieses Gerät/dieser Browser unterstützt keine Web-Mitteilungen.');
   if (!isStandalone()) throw new Error('Bitte öffne Flora Medici über das Symbol auf deinem Home-Bildschirm – nur dort sind Mitteilungen auf dem iPhone möglich.');
 
@@ -148,7 +162,7 @@ export async function setupPush({ token, time }, plants, onStep = () => {}) {
   let s = pushSettings();
 
   onStep('Verbindung zu GitHub prüfen …');
-  await gh('', {}, s);
+  await gh('', { need: 'Zugriff auf das Repository (beim Schlüssel „Only select repositories“ → FaunaMedic)' }, s);
 
   if (!s.vapidPublic) {
     onStep('Sichere Schlüssel erzeugen …');
@@ -176,7 +190,7 @@ export async function setupPush({ token, time }, plants, onStep = () => {}) {
   await syncReminders(plants, { force: true });
 
   onStep('Test-Mitteilung anfordern …');
-  await dispatch('test');
+  try { await dispatch('test'); return { testOk: true }; } catch (e) { return { testOk: false, testError: e.message }; }
 }
 
 export async function sendTest() { await dispatch('test'); }

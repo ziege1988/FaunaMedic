@@ -15,7 +15,7 @@ import {
   syncReminders, scheduleSync, isStandalone, pushSupported,
 } from './reminders.js';
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const MAX_PHOTOS = 3;
 const LOCATIONS = ['Wohnung', 'Balkon / Terrasse', 'Garten', 'Gewächshaus'];
 const STATUS_LABEL = { gesund: 'Gesund', natuerlich: 'Natürlicher Vorgang', leicht: 'Leichte Probleme', mittel: 'Braucht Hilfe', stark: 'Dringend handeln' };
@@ -738,10 +738,22 @@ function renderSettings(v) {
     if (!token) { toast('Bitte zuerst den GitHub-Zugangsschlüssel einfügen'); return; }
     store.set('fm.push', { ...pushSettings(), owner: $('#push-owner').value.trim(), repo: $('#push-repo').value.trim() });
     setBusy(btn, true, 'Richte ein …');
+    $('#push-step').classList.remove('error-box');
     // Wichtig: setupPush direkt (ohne vorheriges await) aufrufen – iOS verlangt die Erlaubnisabfrage direkt nach dem Tippen.
     setupPush({ token, time: $('#push-time').value }, [], (t) => { $('#push-step').textContent = t; })
-      .then(async () => { await syncReminders(await allPlants(), { force: true }); toast('Fertig! Die Test-Mitteilung kommt in 1–2 Minuten. 🔔', 5000); render(); })
-      .catch((err) => { $('#push-step').textContent = ''; toast(err.message || 'Einrichtung fehlgeschlagen', 6000); setBusy(btn, false); });
+      .then(async (res) => {
+        await syncReminders(await allPlants(), { force: true });
+        if (res?.testOk) { toast('Fertig! Die Test-Mitteilung kommt in 1–2 Minuten. 🔔', 5000); render(); return; }
+        await render();
+        const el = $('#push-step');
+        if (el) { el.classList.add('error-box'); el.textContent = `Mitteilungen sind eingerichtet ✅ – nur der Test konnte nicht gestartet werden. ${res?.testError || ''}`; }
+      })
+      .catch((err) => {
+        const el = $('#push-step');
+        el.classList.add('error-box');
+        el.textContent = `❌ ${err.message || 'Einrichtung fehlgeschlagen'}`;
+        setBusy(btn, false);
+      });
   });
   $('#push-test')?.addEventListener('click', async (e) => {
     setBusy(e.currentTarget, true, 'Sende …');
