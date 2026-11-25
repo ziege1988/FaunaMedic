@@ -1,10 +1,10 @@
-/* FaunaMedic – Dein Pflanzendoktor
+/* Flora Medici – Dein Pflanzendoktor
  * Reine Client-App (PWA). KI: Google Gemini API (Free Tier) mit eigenem API-Schlüssel.
  * Alle Daten bleiben auf dem Gerät (IndexedDB / localStorage).
  */
 'use strict';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
 const MAX_PHOTOS = 3;
@@ -64,7 +64,7 @@ const db = {
     if (this._p) return this._p;
     this._p = new Promise((resolve, reject) => {
       if (!('indexedDB' in window)) return reject(new Error('IndexedDB nicht verfügbar'));
-      const req = indexedDB.open('faunamedic', 1);
+      const req = indexedDB.open('floramedici', 1);
       req.onupgradeneeded = () => req.result.createObjectStore('analyses', { keyPath: 'id' });
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -130,7 +130,7 @@ function pickPhotos(source) {
 /* ------------------------------------------------------------------ *
  * KI: Google Gemini
  * ------------------------------------------------------------------ */
-const SYSTEM_PROMPT = `Du bist "FaunaMedic", ein erfahrener, warmherziger Pflanzendoktor (Zimmer-, Balkon- und Gartenpflanzen).
+const SYSTEM_PROMPT = `Du bist "Flora Medici", ein erfahrener, warmherziger Pflanzendoktor (Zimmer-, Balkon- und Gartenpflanzen).
 Deine Hauptaufgabe ist NICHT nur das Bestimmen der Pflanze, sondern vor allem zu erkennen, WAS DER PFLANZE FEHLT:
 z. B. zu nass, zu trocken, zu dunkel, zu viel direkte Sonne/Sonnenbrand, Kälte/Zugluft, Nährstoffmangel, Überdüngung,
 Wurzelfäule, Schädlinge (Spinnmilben, Thripse, Woll-/Schmierläuse, Blattläuse, Trauermücken …), Pilz-/Bakterienkrankheiten,
@@ -148,6 +148,28 @@ Arbeitsweise:
    ändere sie, wenn die Argumente stichhaltig sind, und erkläre im Feld "antwort" kurz und offen, warum du bei deiner
    Einschätzung bleibst oder sie änderst. Gib immer das VOLLSTÄNDIGE aktualisierte Ergebnis zurück.
 
+WICHTIG – Natürliche Vorgänge von echten Problemen unterscheiden (bevor du eine Krankheit diagnostizierst!):
+Viele Veränderungen sind völlig normal und KEIN Grund zur Sorge. Prüfe immer zuerst, ob einer davon vorliegt:
+- Normaler Blattwurf/Alterung: Einzelne ALTE, UNTERE/innere Blätter vergilben gleichmäßig und fallen ab, während
+  die Pflanze oben/an den Triebspitzen gesund nachtreibt (z. B. Monstera, Ficus, Dracaena, Yucca, Palmen, Gummibaum).
+- Saisonaler Laubfall: Laubabwerfende Garten- und Kübelpflanzen (Obstgehölze, Hortensie, Rosen, Feige, Ahorn,
+  Fuchsie, Engelstrompete im Winterquartier …) verfärben sich im Herbst und verlieren ihr Laub. Berücksichtige das
+  mitgeschickte Datum und den Standort (drinnen/draußen) für die Jahreszeit.
+- Winterruhe/Ruhephase: verlangsamtes Wachstum, einzelne Blattverluste; Einziehen von Knollen/Zwiebeln
+  (Amaryllis, Alpenveilchen, Tulpen, Dahlien, Kaladie) nach der Blüte.
+- Standortwechsel-Reaktion: Ficus benjamina & Co. werfen nach Umstellen/Umtopfen/Lichtwechsel kurzzeitig Blätter ab
+  (Anpassung, meist harmlos).
+- Natürliches Verblühen, Absterben der Blütenstiele, Bildung von Luftwurzeln, normale Panaschierung,
+  natürliche rötliche Austriebe, Verholzen der Triebbasis, Sukkulenten-Unterblätter, die eintrocknen.
+Unterscheidungsmerkmale: Betrifft es nur wenige, alte, untere Blätter gleichmäßig → eher natürlich.
+Betrifft es junge Blätter, die Triebspitzen, sehr viele Blätter gleichzeitig, mit Flecken, Belägen, Gespinsten,
+Löchern, matschigen Stellen oder schlechtem Geruch → eher ein Problem.
+Ist es natürlich: setze "zustand.status" auf "natuerlich", "natuerlich.ist_natuerlich" auf true, erkläre in
+"natuerlich.erklaerung" beruhigend, warum das normal ist und woran man erkennt, wann es doch problematisch würde,
+und gib nur sanfte Pflegetipps (keine Behandlung). Wenn du nicht sicher unterscheiden kannst (z. B. nur ein Blatt
+im Bild), frage nach: "Sind es eher alte untere Blätter oder neue Triebe?", "Wie viele Blätter fallen pro Woche?",
+"Hast du die Pflanze kürzlich umgestellt?", oder fordere ein Foto der ganzen Pflanze an.
+
 Tonfall: persönlich, duzen, freundlich, klar und kurz, ohne Fachchinesisch (Fachbegriffe nur mit Erklärung). Sprache: Deutsch.
 Die Texte sollen sich lesen wie:
 - einleitung: "Was wir hier sehen, ist eine …" (1–2 Sätze, gern mit einem netten Detail zur Pflanze)
@@ -162,7 +184,8 @@ Antworte AUSSCHLIESSLICH mit gültigem JSON (kein Markdown) in genau diesem Form
   "bild_hinweis": "",
   "antwort": "",
   "pflanze": { "name": "", "botanisch": "", "sicherheit": 0, "alternativen": [ { "name": "", "sicherheit": 0 } ] },
-  "zustand": { "status": "gesund|leicht|mittel|stark", "titel": "", "sicherheit": 0 },
+  "zustand": { "status": "gesund|natuerlich|leicht|mittel|stark", "titel": "", "sicherheit": 0 },
+  "natuerlich": { "ist_natuerlich": false, "erklaerung": "" },
   "einleitung": "",
   "pflege_text": "",
   "pflege": { "licht": "", "temperatur": "", "giessen": "", "bluete": "", "standort": "" },
@@ -284,7 +307,9 @@ function normalize(r) {
   const str = (x) => (typeof x === 'string' ? x.trim() : '');
   const p = r.pflanze || {};
   const z = r.zustand || {};
-  const status = ['gesund', 'leicht', 'mittel', 'stark'].includes(z.status) ? z.status : 'leicht';
+  const nat = r.natuerlich || {};
+  let status = ['gesund', 'natuerlich', 'leicht', 'mittel', 'stark'].includes(z.status) ? z.status : 'leicht';
+  if (nat.ist_natuerlich === true && (status === 'gesund' || status === 'leicht')) status = 'natuerlich';
   return {
     bild_ok: r.bild_ok !== false,
     bild_hinweis: str(r.bild_hinweis),
@@ -296,6 +321,7 @@ function normalize(r) {
       alternativen: arr(p.alternativen).filter((a) => a && a.name).map((a) => ({ name: str(a.name), sicherheit: clamp(a.sicherheit, 0, 100) })).slice(0, 3),
     },
     zustand: { status, titel: str(z.titel), sicherheit: clamp(z.sicherheit, 0, 100) },
+    natuerlich: { ist_natuerlich: nat.ist_natuerlich === true || status === 'natuerlich', erklaerung: str(nat.erklaerung) },
     einleitung: str(r.einleitung),
     pflege_text: str(r.pflege_text),
     pflege: Object.fromEntries(['licht', 'temperatur', 'giessen', 'bluete', 'standort'].map((k) => [k, str((r.pflege || {})[k])])),
@@ -363,15 +389,15 @@ function renderHome(v) {
   const slots = ['Ganze Pflanze', 'Problemstelle (nah)', 'Erde / Blattunterseite'];
   v.innerHTML = `
     <section class="hero">
-      <img src="icons/logo.svg" alt="FaunaMedic Logo">
-      <h1>Fauna<span>Medic</span></h1>
+      <img src="icons/logo.svg" alt="Flora Medici Logo">
+      <h1>Flora <span>Medici</span></h1>
       <div class="tagline">Erkennen · Analysieren · Helfen</div>
     </section>
 
     ${hasKey ? '' : `
     <div class="card warn">
       <div class="card-head">${ICON.key}<h3>Einmalig einrichten</h3></div>
-      <p class="small">Für die Analyse braucht FaunaMedic einen kostenlosen Google-Gemini-Schlüssel. Das dauert ca. 2 Minuten.</p>
+      <p class="small">Für die Analyse braucht Flora Medici einen kostenlosen Google-Gemini-Schlüssel. Das dauert ca. 2 Minuten.</p>
       <div style="margin-top:12px"><button class="btn small" id="go-setup">Jetzt einrichten</button></div>
     </div>`}
 
@@ -396,7 +422,7 @@ function renderHome(v) {
         ${LOCATIONS.map((l) => `<button class="chip ${d.location === l ? 'active' : ''}" data-loc="${esc(l)}">${esc(l)}</button>`).join('')}
       </div>
       <label class="field" style="margin-top:14px"><span>Was ist dir aufgefallen? (optional)</span>
-        <textarea id="note" placeholder="z. B. Seit einer Woche gelbe Blätter, gieße 2× pro Woche, steht am Ostfenster …">${esc(d.note)}</textarea>
+        <textarea id="note" placeholder="z. B. Untere Blätter werden gelb und fallen ab, gieße 2× pro Woche, steht am Ostfenster …">${esc(d.note)}</textarea>
       </label>
     </div>
 
@@ -512,8 +538,10 @@ function renderResult(v) {
   const r = s?.result;
   if (!r) return go('home');
   const st = r.zustand.status;
-  const stCls = st === 'gesund' ? 'ok' : st === 'stark' ? 'bad' : 'warn';
-  const stLabel = { gesund: 'Gesund', leicht: 'Leichte Probleme', mittel: 'Braucht Hilfe', stark: 'Dringend handeln' }[st];
+  const isOk = st === 'gesund' || st === 'natuerlich';
+  const stCls = isOk ? 'ok' : st === 'stark' ? 'bad' : 'warn';
+  const stLabel = { gesund: 'Gesund', natuerlich: 'Natürlicher Vorgang', leicht: 'Leichte Probleme', mittel: 'Braucht Hilfe', stark: 'Dringend handeln' }[st];
+  const nat = r.natuerlich || {};
   const careItems = [
     ['licht', 'Licht', ICON.sun], ['temperatur', 'Temperatur', ICON.temp], ['giessen', 'Gießen', ICON.drop],
     ['bluete', 'Blüte', ICON.flower], ['standort', 'Standort', ICON.pin],
@@ -547,8 +575,13 @@ function renderResult(v) {
           <div class="k">${icon}${label}</div><div class="v">${esc(r.pflege[k])}</div></div>`).join('')}</div>` : ''}
     </div>` : ''}
 
+    ${nat.ist_natuerlich ? `
+    <div class="card tint"><div class="card-head">${ICON.leaf}<h3>Kein Grund zur Sorge</h3></div>
+      <div class="speech">${paras(nat.erklaerung || 'Was du hier siehst, ist ein ganz natürlicher Vorgang und keine Krankheit.')}</div>
+    </div>` : ''}
+
     <div class="card ${stCls === 'ok' ? 'tint' : stCls}">
-      <div class="card-head">${st === 'gesund' ? ICON.check : ICON.alert}<h3>${esc(r.zustand.titel || stLabel)}</h3></div>
+      <div class="card-head">${isOk ? ICON.check : ICON.alert}<h3>${esc(r.zustand.titel || stLabel)}</h3></div>
       <div class="speech">${paras(r.diagnose_text)}</div>
       ${r.symptome.length ? `<h3 style="margin-top:14px">Symptome</h3><ul class="list">
         ${r.symptome.map((x) => `<li><span class="dot sym">${ICON.check}</span><span>${esc(x)}</span></li>`).join('')}</ul>` : ''}
@@ -591,7 +624,7 @@ function renderResult(v) {
       <div class="card-head">${ICON.chat}<h3>Stimmt das? Hinterfrage mich!</h3></div>
       <p class="small muted">Wenn dir etwas komisch vorkommt, sag es mir – ich prüfe meine Einschätzung neu.</p>
       <div class="chips" style="margin-top:10px">
-        ${['Das ist eine andere Pflanze', 'Die Diagnose passt nicht', 'Warum bist du so sicher?', 'Welche Ursachen gibt es noch?', 'Ist das ansteckend für andere Pflanzen?']
+        ${['Ist das vielleicht ganz normal?', 'Das ist eine andere Pflanze', 'Die Diagnose passt nicht', 'Warum bist du so sicher?', 'Welche Ursachen gibt es noch?', 'Ist das ansteckend für andere Pflanzen?']
           .map((c) => `<button class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('')}
       </div>
       <textarea id="challenge-text" style="margin-top:12px" placeholder="z. B. Ich gieße nur alle 2 Wochen, Staunässe kann es nicht sein."></textarea>
@@ -704,7 +737,7 @@ function renderSettings(v) {
       Dein Verlauf wird ausschließlich auf deinem Gerät gespeichert.</p>
       <button class="btn ghost small" id="wipe" style="margin-top:12px">${ICON.trash}Alle lokalen Daten löschen</button>
     </div>
-    <p class="version">FaunaMedic ${APP_VERSION} · Updates werden beim Start automatisch geladen</p>
+    <p class="version">Flora Medici ${APP_VERSION} · Updates werden beim Start automatisch geladen</p>
   `;
   const save = () => {
     store.set('fm.apiKey', $('#api-key').value.trim());
@@ -745,7 +778,7 @@ function renderHelp(v) {
         <li>Mit deinem Google-Konto anmelden und den Nutzungsbedingungen zustimmen.</li>
         <li>Auf <b>„API-Schlüssel erstellen“</b> tippen.</li>
         <li>Den Schlüssel (beginnt mit <code>AIza</code>) kopieren.</li>
-        <li>Hier in FaunaMedic unter <b>Einstellungen</b> einfügen, „Testen“ und „Speichern“.</li>
+        <li>Hier in Flora Medici unter <b>Einstellungen</b> einfügen, „Testen“ und „Speichern“.</li>
       </ol>
     </div>
     <div class="card tint">
@@ -781,5 +814,5 @@ if ('serviceWorker' in navigator) {
 /* Start */
 go('home');
 try {
-  if (sessionStorage.getItem('fm.updated')) { sessionStorage.removeItem('fm.updated'); toast(`FaunaMedic wurde aktualisiert (v${APP_VERSION})`); }
+  if (sessionStorage.getItem('fm.updated')) { sessionStorage.removeItem('fm.updated'); toast(`Flora Medici wurde aktualisiert (v${APP_VERSION})`); }
 } catch { /* egal */ }

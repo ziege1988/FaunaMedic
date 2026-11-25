@@ -1,9 +1,9 @@
-/* FaunaMedic Service Worker
+/* Flora Medici Service Worker
  * Strategie "Network first": Ist das Handy online, wird beim Start immer die neueste Version geladen
  * (= automatische Updates). Offline wird die zuletzt gespeicherte Version genutzt.
  * Bei jeder Veröffentlichung CACHE_VERSION erhöhen.
  */
-const CACHE_VERSION = 'faunamedic-v1.0.0';
+const CACHE_VERSION = 'floramedici-v1.1.0';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
   'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
