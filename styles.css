@@ -242,3 +242,61 @@ textarea { min-height: 84px; resize: vertical; }
 a { color: var(--green-600); }
 .disclaimer { font-size: .78rem; color: var(--grey-500); text-align: center; margin: 6px 8px 0; }
 .version { text-align: center; font-size: .75rem; color: var(--grey-300); margin-top: 16px; }
+
+/* ---------- Version 2: Patientenakte, Plan, Sprechstunde ---------- */
+.hero.compact { padding: 6px 0 2px; }
+.hero.compact img { width: 64px; height: 64px; border-radius: 18px; }
+.hero.compact h1 { font-size: 1.3rem; margin-top: 8px; }
+.tap { cursor: pointer; }
+.inline-btn { border: 0; background: none; padding: 2px; color: var(--grey-500); vertical-align: middle; }
+.inline-btn svg { width: 18px; height: 18px; }
+details summary { cursor: pointer; padding: 4px 0; }
+
+.plan-day { padding: 8px 0; border-top: 1px solid var(--grey-100); }
+.plan-day:first-of-type { border-top: 0; padding-top: 0; }
+.plan-date { font-size: .78rem; font-weight: 700; color: var(--grey-500); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.plan-day.today .plan-date { color: var(--green-600); }
+.plan-day.overdue .plan-date { color: var(--bad-ink); }
+.task { display: flex; gap: 12px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+.task input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--green-600); flex-shrink: 0; }
+.task.done span { text-decoration: line-through; color: var(--grey-500); }
+.task .sub, .visit-row .sub { color: var(--grey-700); font-size: .88rem; }
+
+.visit-row { display: flex; gap: 12px; align-items: center; width: 100%; border: 0; background: none; text-align: left; padding: 10px 0; border-top: 1px solid var(--grey-100); color: var(--ink); }
+.visit-row:first-of-type { border-top: 0; padding-top: 0; }
+.visit-row img { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; flex-shrink: 0; }
+.visit-row svg, .hist-item > svg { color: var(--grey-300); }
+.visit-row .badge { margin-left: 4px; }
+
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.compare figure, .marked, .sketch { margin: 0; }
+.compare img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); display: block; }
+.compare figcaption { font-size: .75rem; color: var(--grey-500); text-align: center; margin-top: 4px; }
+
+.switch { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.switch input { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--green-600); flex-shrink: 0; }
+
+/* Sprechstunde */
+.ask-head { display: flex; gap: 12px; align-items: center; margin: 4px 0 12px; }
+.ask-head img { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; }
+.thread.chat { margin-bottom: 14px; }
+.bubble.rich { max-width: 100%; width: 100%; background: var(--surface); box-shadow: var(--shadow); border-radius: 18px; padding: 14px; }
+.marked { margin-top: 12px; }
+.mark-wrap { position: relative; border-radius: var(--radius-sm); overflow: hidden; }
+.bubble.rich img, .mark-wrap img { width: 100%; height: auto; object-fit: contain; margin-top: 0; border-radius: 0; display: block; }
+.bubble.rich .sketch img { border-radius: var(--radius-sm); }
+.mark {
+  position: absolute; transform: translate(-50%, -50%); min-width: 28px; height: 28px; padding: 0 6px;
+  border-radius: 999px; background: #D9534F; color: #fff; font-weight: 700; font-size: .85rem;
+  display: grid; place-items: center; border: 2.5px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+.marked figcaption { margin-top: 8px; }
+.sketch { margin-top: 12px; text-align: center; }
+.sketch img { width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--grey-100); border-radius: var(--radius-sm); }
+.steps-list { margin: 12px 0 0; padding-left: 22px; }
+.steps-list li { margin: 6px 0; }
+.steps-list .sub { color: var(--grey-700); font-size: .9rem; }
+.tasks-offer { margin-top: 12px; background: var(--mint-50); border-radius: var(--radius-sm); padding: 12px; }
+.selfcheck { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--grey-100); }
+.composer { margin-bottom: 0; }
+.composer textarea { min-height: 64px; }

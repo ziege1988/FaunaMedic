@@ -1,0 +1,63 @@
+# Flora Medici – Erinnerungen als iPhone-Mitteilung
+# Wird von cron-job.org alle 15 Minuten gestartet (workflow_dispatch).
+# Benötigte Secrets (legt die App selbst an): FM_REMINDERS, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
+name: Flora Medici Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'check = fällige Erinnerungen senden, test = Test-Mitteilung'
+        required: false
+        default: 'check'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: floramedici-push
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Bereits gesendete Erinnerungen laden
+        uses: actions/cache/restore@v4
+        with:
+          path: .push-state
+          key: fm-sent-${{ github.run_id }}
+          restore-keys: fm-sent-
+
+      - name: web-push installieren
+        working-directory: scripts
+        run: npm install --no-save --no-package-lock --no-audit --no-fund web-push@3.6.7
+
+      - name: Fällige Erinnerungen senden
+        id: send
+        working-directory: scripts
+        env:
+          FM_DATA: ${{ secrets.FM_REMINDERS }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          MODE: ${{ inputs.mode || 'check' }}
+          STATE_FILE: ${{ github.workspace }}/.push-state/sent.json
+          APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: node send-push.mjs
+
+      - name: Gesendete Erinnerungen merken
+        if: steps.send.outputs.changed == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .push-state
+          key: fm-sent-${{ github.run_id }}
