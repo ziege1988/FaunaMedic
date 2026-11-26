@@ -28,9 +28,9 @@ export function nextOccurrence(t, from = today()) {
   if (d < from) { const k = Math.ceil(daysBetween(t.date, from) / t.repeat.every); d = addDays(t.date, k * t.repeat.every); }
   return d <= t.repeat.until ? d : null;
 }
-function makeTask({ start, titel, details, every, until, source }) {
+function makeTask({ start, titel, details, every, until, source, why = '' }) {
   const repeat = every > 0 ? { every, until: until < start ? start : until } : null;
-  return { id: uid(), date: start, titel, details, done: false, doneDates: [], repeat, source };
+  return { id: uid(), date: start, titel, details, why: repeat ? why : '', done: false, doneDates: [], repeat, source };
 }
 
 export function buildPlan(result, visitId, oldPlan) {
@@ -40,7 +40,7 @@ export function buildPlan(result, visitId, oldPlan) {
     const start = addDays(today(), b.tag);
     // Wiederkehrende Pflege läuft standardmäßig bis zum Kontrolltermin (= "bis zur Erholung"), sonst max. 14 Tage
     const until = b.bis_tag > 0 ? addDays(today(), b.bis_tag) : (checkDate || addDays(start, 14));
-    return makeTask({ start, titel: b.titel, details: b.details, every: b.wiederholen_alle_tage, until, source: 'plan' });
+    return makeTask({ start, titel: b.titel, details: b.details, every: b.wiederholen_alle_tage, until, source: 'plan', why: b.begruendung });
   });
   const checkup = checkDate ? { date: checkDate, foto: result.kontrolle_foto, done: false } : null;
   return { visitId, created: Date.now(), tasks: [...tasks, ...keep].sort((a, b) => a.date.localeCompare(b.date)), checkup };
@@ -50,7 +50,7 @@ export function addQuestionTasks(plant, aufgaben) {
   plant.plan = plant.plan || { visitId: null, created: Date.now(), tasks: [], checkup: null };
   for (const a of aufgaben) {
     if (plant.plan.tasks.some((t) => t.date === a.datum && t.titel === a.titel)) continue;
-    plant.plan.tasks.push(makeTask({ start: a.datum, titel: a.titel, details: a.details, every: a.wiederholen_alle_tage, until: a.bis_datum || addDays(a.datum, 90), source: 'frage' }));
+    plant.plan.tasks.push(makeTask({ start: a.datum, titel: a.titel, details: a.details, every: a.wiederholen_alle_tage, until: a.bis_datum || addDays(a.datum, 90), source: 'frage', why: a.begruendung }));
   }
   plant.plan.tasks.sort((a, b) => a.date.localeCompare(b.date));
 }

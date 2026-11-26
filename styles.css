@@ -306,3 +306,4 @@ details summary { cursor: pointer; padding: 4px 0; }
 [hidden] { display: none !important; }
 .series { padding: 6px 0 6px 34px; }
 .series .badge, .task .badge { margin-left: 4px; vertical-align: 1px; }
+.why { margin-top: 4px; font-size: .8rem; color: var(--green-800); background: var(--mint-50); border-radius: 10px; padding: 6px 10px; }

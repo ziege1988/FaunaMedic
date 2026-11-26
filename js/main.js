@@ -15,7 +15,7 @@ import {
   syncReminders, scheduleSync, isStandalone, pushSupported, repeatLabel, occursOn, isDoneOn, isActive, nextOccurrence,
 } from './reminders.js';
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.2.1';
 const MAX_PHOTOS = 3;
 const LOCATIONS = ['Wohnung', 'Balkon / Terrasse', 'Garten', 'Gewächshaus'];
 const STATUS_LABEL = { gesund: 'Gesund', natuerlich: 'Natürlicher Vorgang', leicht: 'Leichte Probleme', mittel: 'Braucht Hilfe', stark: 'Dringend handeln' };
@@ -350,7 +350,8 @@ async function renderPlant(v, id) {
           const nx = nextOccurrence(t, addDays(d0, 1));
           return `<div class="series"><b>${esc(t.titel)}</b> <span class="badge ok">${repeatLabel(t.repeat)}</span>
             <br><span class="sub">bis ${fmtDate(t.repeat.until, { weekday: 'short', day: 'numeric', month: 'long' })}${nx ? ` · nächstes Mal ${relDay(nx)}` : ''}</span>
-            ${t.details ? `<br><span class="sub">${esc(t.details)}</span>` : ''}</div>`;
+            ${t.details ? `<br><span class="sub">${esc(t.details)}</span>` : ''}
+            ${t.why ? `<div class="why">${ICON.question.replace('<svg', '<svg style="width:14px;height:14px;vertical-align:-2px"')} Warum so oft? ${esc(t.why)}</div>` : ''}</div>`;
         }).join('')}</div>` : ''}
       ${Object.entries(byDate).map(([date, ts]) => `
         <div class="plan-day"><div class="plan-date">${relDay(date)[0].toUpperCase()}${relDay(date).slice(1)}${daysUntil(date) < 7 ? ` · ${fmtDate(date)}` : ''}</div>
@@ -493,7 +494,7 @@ async function renderVisit(v, plantId, visitId) {
 
     ${isPlanVisit ? `<div class="card tint"><div class="card-head">${ICON.calendar}<h3>Dein Behandlungsplan</h3></div>
       <ul class="list">
-        ${r.behandlungsplan.slice(0, 6).map((b) => `<li><span class="dot">${ICON.check}</span><span><b>${b.wiederholen_alle_tage ? `${b.tag === 0 ? 'Ab heute' : `Ab Tag ${b.tag}`} ${repeatLabel({ every: b.wiederholen_alle_tage })}` : b.tag === 0 ? 'Heute' : b.tag === 1 ? 'Morgen' : `In ${b.tag} Tagen`}:</b> ${esc(b.titel)}${b.wiederholen_alle_tage ? ` <span class="sub">(bis ${b.bis_tag ? `Tag ${b.bis_tag}` : 'zur Kontrolle'})</span>` : ''}</span></li>`).join('')}
+        ${r.behandlungsplan.slice(0, 6).map((b) => `<li><span class="dot">${ICON.check}</span><span><b>${b.wiederholen_alle_tage ? `${b.tag === 0 ? 'Ab heute' : `Ab Tag ${b.tag}`} ${repeatLabel({ every: b.wiederholen_alle_tage })}` : b.tag === 0 ? 'Heute' : b.tag === 1 ? 'Morgen' : `In ${b.tag} Tagen`}:</b> ${esc(b.titel)}${b.wiederholen_alle_tage ? ` <span class="sub">(bis ${b.bis_tag ? `Tag ${b.bis_tag}` : 'zur Kontrolle'})</span>` : ''}${b.begruendung ? `<br><span class="sub">↳ ${esc(b.begruendung)}</span>` : ''}</span></li>`).join('')}
         ${p.plan.checkup ? `<li><span class="dot urgent">!</span><span><b>Kontrolltermin ${relDay(p.plan.checkup.date)}</b>${relDay(p.plan.checkup.date) === fmtDate(p.plan.checkup.date) ? '' : ` (${fmtDate(p.plan.checkup.date)})`}: ${esc(p.plan.checkup.foto || 'neues Foto machen')}</span></li>` : ''}
       </ul>
       <div style="margin-top:12px"><button class="btn secondary" id="to-plant">Zur Patientenakte</button></div></div>` : ''}
@@ -519,7 +520,7 @@ async function renderVisit(v, plantId, visitId) {
       <div class="card-head">${ICON.chat}<h3>Stimmt das? Hinterfrage mich!</h3></div>
       <p class="small muted">Wenn dir etwas komisch vorkommt, sag es mir – ich prüfe meine Einschätzung neu.</p>
       <div class="chips" style="margin-top:10px">
-        ${['Ist das vielleicht ganz normal?', 'Das ist eine andere Pflanze', 'Die Diagnose passt nicht', 'Warum bist du so sicher?', 'Welche Ursachen gibt es noch?']
+        ${['Ist das vielleicht ganz normal?', 'Ist der Behandlungsplan zu häufig?', 'Das ist eine andere Pflanze', 'Die Diagnose passt nicht', 'Warum bist du so sicher?']
           .map((c) => `<button class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('')}
       </div>
       <textarea id="challenge-text" style="margin-top:12px" placeholder="z. B. Ich gieße nur alle 2 Wochen, Staunässe kann es nicht sein."></textarea>

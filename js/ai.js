@@ -56,7 +56,7 @@ const DIAG_SCHEMA = `{
   "symptome": [ "" ],
   "ursachen": [ { "titel": "", "erklaerung": "", "wahrscheinlichkeit": 0 } ],
   "massnahmen": [ { "titel": "", "details": "", "dringend": false } ],
-  "behandlungsplan": [ { "tag": 0, "titel": "", "details": "", "wiederholen_alle_tage": 0, "bis_tag": 0 } ],
+  "behandlungsplan": [ { "tag": 0, "titel": "", "details": "", "wiederholen_alle_tage": 0, "bis_tag": 0, "begruendung": "" } ],
   "kontrolle_in_tagen": 7,
   "kontrolle_foto": "",
   "rueckfragen": [ "" ],
@@ -75,7 +75,19 @@ EINMALIGE Aufgaben (z. B. "Befallene Blätter entfernen", "Umtopfen", "Standort 
 WIEDERKEHRENDE Pflege bis zur Erholung (z. B. "Blätter besprühen", "Blätter mit feuchtem Tuch abwischen",
 "Erdfeuchte mit dem Finger prüfen", "Auf Schädlinge kontrollieren", "Mit Schmierseifenlösung behandeln") als EIN Eintrag mit
 "wiederholen_alle_tage" (1 = täglich, 2 = jeden 2. Tag, 3, 7 = wöchentlich …) und "bis_tag" (0 = bis zum Kontrolltermin,
-sonst Tage ab heute, max. 60). Wähle die Häufigkeit fachlich richtig für diese Art und Jahreszeit – nicht öfter als nötig.
+sonst Tage ab heute, max. 60).
+HÄUFIGKEIT DURCHDACHT FESTLEGEN – niemals pauschal "täglich". Leite sie für jede wiederkehrende Maßnahme einzeln her aus:
+(a) Bedarf GENAU DIESER Art (z. B. Farne/Calathea mögen hohe Luftfeuchte; Sukkulenten, Kakteen und Pflanzen mit behaarten
+    Blättern wie Usambaraveilchen NIE besprühen; Orchideen-Luftwurzeln anders als Blätter),
+(b) Jahreszeit und Standort (Heizungsluft im Winter → eher öfter Luftfeuchte; draußen bei Regen keine Befeuchtung;
+    Winterruhe → seltener gießen/kontrollieren, nicht düngen),
+(c) Schwere und Ursache des Problems (Befeuchten bei Pilzbefall eher schädlich; zu viel Wasser bei Staunässe gefährlich),
+(d) Wirkweise des Mittels (z. B. Schmierseife/Neemöl gegen Schädlinge typischerweise alle 5–7 Tage über 3–4 Wochen,
+    nicht täglich; Erdfeuchte prüfen statt starrem Gießplan – Gießen nur "wenn die obersten 2–3 cm trocken sind"),
+(e) Risiken bei zu häufiger Anwendung (Pilz, Blattflecken, Wurzelfäule, Verbrennungen, Überdüngung).
+Wähle die NIEDRIGSTE Häufigkeit, die wirksam ist. Gib in "begruendung" in 1 Satz an, warum genau dieser Rhythmus für
+diese Pflanze sinnvoll ist (z. B. "Farne verlieren in Heizungsluft schnell Feuchtigkeit – jeden 2. Tag reicht, täglich fördert Pilz.").
+Für einmalige Aufgaben bleibt "begruendung" leer.
 Bei gesunden/natürlichen Pflanzen nur 0–2 sanfte Pflegeaufgaben.
 "kontrolle_in_tagen": wann ein neues Kontrollfoto sinnvoll ist (stark: 2–4, mittel: 5–7, leicht: 7–14, gesund/natürlich: 21–30).
 "kontrolle_foto": was genau dann fotografiert werden soll.
@@ -110,6 +122,10 @@ Prüfe insbesondere:
 3. Ist es vielleicht ein natürlicher Vorgang (normaler Blattwurf, Herbst, Ruhephase) statt einer Krankheit – oder umgekehrt?
 4. Sind die Prozentwerte realistisch (nicht zu selbstsicher)?
 5. Sind Maßnahmen und Behandlungsplan richtig, sicher und für genau diese Art geeignet?
+6. Prüfe JEDE wiederkehrende Maßnahme einzeln: Ist die Häufigkeit ("wiederholen_alle_tage") für genau diese Art,
+   Jahreszeit, Standort und Schwere fachlich richtig – oder zu oft (Überpflege, Pilzgefahr, Staunässe) bzw. zu selten?
+   Ist die Maßnahme für diese Art überhaupt geeignet (z. B. kein Besprühen bei Sukkulenten/behaarten Blättern)?
+   Ist die Dauer ("bis_tag") sinnvoll? Korrigiere Häufigkeit, Dauer und "begruendung", und nenne Änderungen in "pruefung.hinweise".
 Korrigiere alles, was nicht stimmt, und senke die Sicherheit, wenn Zweifel bleiben.
 
 ${NATURAL}
@@ -142,6 +158,7 @@ Wenn für eine praktische Frage kein passendes Foto vorliegt (z. B. Schnitt, abe
 AUFGABEN: Wenn aus der Antwort Termine folgen (z. B. "Ende Februar zurückschneiden", "ab März alle 2 Wochen düngen"),
 gib sie in "aufgaben" mit konkretem "datum" (JJJJ-MM-TT, ab heute) an – max. 4. Regelmäßige Maßnahmen mit
 "wiederholen_alle_tage" (z. B. 14 = alle 2 Wochen düngen) und "bis_datum" (JJJJ-MM-TT, z. B. Ende der Saison); einmalige mit 0.
+Häufigkeit fachlich für genau diese Art und Saison herleiten (niedrigste wirksame), in "begruendung" 1 Satz warum.
 
 Antworte AUSSCHLIESSLICH mit gültigem JSON:
 {
@@ -149,7 +166,7 @@ Antworte AUSSCHLIESSLICH mit gültigem JSON:
   "schritte": [ { "titel": "", "details": "" } ],
   "markierungen": { "bild": 1, "punkte": [ { "y": 0, "x": 0, "label": "1", "text": "" } ] },
   "skizze_svg": "",
-  "aufgaben": [ { "datum": "JJJJ-MM-TT", "titel": "", "details": "", "wiederholen_alle_tage": 0, "bis_datum": "" } ],
+  "aufgaben": [ { "datum": "JJJJ-MM-TT", "titel": "", "details": "", "wiederholen_alle_tage": 0, "bis_datum": "", "begruendung": "" } ],
   "sicherheit": 0,
   "pruefung": "",
   "rueckfragen": [ "" ]
@@ -389,7 +406,7 @@ export function normalizeDiagnosis(r = {}) {
     symptome: arr(r.symptome).map(str).filter(Boolean),
     ursachen: arr(r.ursachen).filter((u) => u && u.titel).map((u) => ({ titel: str(u.titel), erklaerung: str(u.erklaerung), wahrscheinlichkeit: clamp(u.wahrscheinlichkeit, 0, 100) })).sort((a, b) => b.wahrscheinlichkeit - a.wahrscheinlichkeit),
     massnahmen: arr(r.massnahmen).filter((m) => m && m.titel).map((m) => ({ titel: str(m.titel), details: str(m.details), dringend: !!m.dringend })),
-    behandlungsplan: arr(r.behandlungsplan).filter((b) => b && b.titel).map((b) => ({ tag: clamp(b.tag, 0, 60), titel: str(b.titel), details: str(b.details), wiederholen_alle_tage: clamp(b.wiederholen_alle_tage, 0, 30), bis_tag: clamp(b.bis_tag, 0, 60) })).slice(0, 10),
+    behandlungsplan: arr(r.behandlungsplan).filter((b) => b && b.titel).map((b) => ({ tag: clamp(b.tag, 0, 60), titel: str(b.titel), details: str(b.details), wiederholen_alle_tage: clamp(b.wiederholen_alle_tage, 0, 30), bis_tag: clamp(b.bis_tag, 0, 60), begruendung: str(b.begruendung) })).slice(0, 10),
     kontrolle_in_tagen: clamp(r.kontrolle_in_tagen ?? 7, 0, 90),
     kontrolle_foto: str(r.kontrolle_foto),
     rueckfragen: arr(r.rueckfragen).map(str).filter(Boolean),
@@ -413,7 +430,7 @@ function normalizeAnswer(r = {}) {
     },
     // SVG wird später nur als <img> angezeigt – darin laufen keine Skripte.
     skizze_svg: /^<svg[\s>]/i.test(svg) && svg.length < 30000 && !/<script|foreignObject|href\s*=\s*["']?(?!#)/i.test(svg) ? svg : '',
-    aufgaben: arr(r.aufgaben).filter((a) => a && a.titel && isValidISO(a.datum) && a.datum >= today()).map((a) => ({ datum: a.datum, titel: str(a.titel), details: str(a.details), wiederholen_alle_tage: clamp(a.wiederholen_alle_tage, 0, 60), bis_datum: isValidISO(a.bis_datum) && a.bis_datum >= a.datum ? a.bis_datum : '' })).slice(0, 4),
+    aufgaben: arr(r.aufgaben).filter((a) => a && a.titel && isValidISO(a.datum) && a.datum >= today()).map((a) => ({ datum: a.datum, titel: str(a.titel), details: str(a.details), wiederholen_alle_tage: clamp(a.wiederholen_alle_tage, 0, 60), bis_datum: isValidISO(a.bis_datum) && a.bis_datum >= a.datum ? a.bis_datum : '', begruendung: str(a.begruendung) })).slice(0, 4),
     sicherheit: clamp(r.sicherheit, 0, 100),
     pruefung: str(r.pruefung),
     rueckfragen: arr(r.rueckfragen).map(str).filter(Boolean),
