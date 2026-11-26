@@ -9,13 +9,13 @@ import {
   today, fmtDate, relDay, daysUntil, fmtTimestamp,
 } from './util.js';
 import { db } from './db.js';
-import { getSettings, diagnose, followUp, askQuestion, friendlyError, testConnection } from './ai.js';
+import { getSettings, diagnose, followUp, askQuestion, friendlyError, testConnection, errorLog } from './ai.js';
 import {
   buildPlan, addQuestionTasks, dueItems, updateBadge, pushSettings, setupPush, sendTest, disablePush,
   syncReminders, scheduleSync, isStandalone, pushSupported,
 } from './reminders.js';
 
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.1.0';
 const MAX_PHOTOS = 3;
 const LOCATIONS = ['Wohnung', 'Balkon / Terrasse', 'Garten', 'Gewächshaus'];
 const STATUS_LABEL = { gesund: 'Gesund', natuerlich: 'Natürlicher Vorgang', leicht: 'Leichte Probleme', mittel: 'Braucht Hilfe', stark: 'Dringend handeln' };
@@ -27,6 +27,7 @@ const state = {
   loading: null, // { img, text }
   busy: false,
   askDraft: { text: '', images: [] },
+  lastError: null, // bleibt sichtbar, bis neu analysiert wird
 };
 
 const allPlants = () => db.allPlants();
@@ -145,6 +146,14 @@ async function renderHome(v, plantId) {
       <div style="margin-top:12px"><button class="btn small" id="go-setup">Jetzt einrichten</button></div>
     </div>`}
 
+    ${state.lastError ? `
+    <div class="card bad">
+      <div class="card-head">${ICON.alert}<h3>Die Analyse hat nicht geklappt</h3></div>
+      <p class="small">${esc(state.lastError)}</p>
+      <p class="small muted" style="margin-top:6px">Deine Fotos sind noch da – du kannst es direkt noch einmal versuchen.</p>
+      <div class="btn-row" style="margin-top:10px"><button class="btn small ghost" id="err-close">Ausblenden</button><button class="btn small secondary" id="err-log">Fehlerprotokoll</button></div>
+    </div>` : ''}
+
     <div class="card">
       <div class="card-head">${ICON.stetho}<h2>${plant ? 'Wie geht es ihr heute?' : 'Neuer Patient: Was fehlt deiner Pflanze?'}</h2></div>
       <p class="small muted">${plant ? 'Fotografiere möglichst aus dem gleichen Blickwinkel wie beim letzten Mal.' : 'Mach 1–3 Fotos. Je mehr Details, desto genauer die Diagnose.'}</p>
@@ -196,7 +205,9 @@ async function renderHome(v, plantId) {
   $$('[data-remove]', v).forEach((b) => b.addEventListener('click', () => { dd.images.splice(+b.dataset.remove, 1); render(); }));
   $$('[data-loc]', v).forEach((b) => b.addEventListener('click', () => { dd.location = dd.location === b.dataset.loc ? '' : b.dataset.loc; dd.note = $('#note').value; render(); }));
   $('#note').addEventListener('input', (e) => { dd.note = e.target.value; });
-  $('#analyze').addEventListener('click', () => runAnalysis(plant));
+  $('#analyze').addEventListener('click', () => { state.lastError = null; runAnalysis(plant); });
+  $('#err-log')?.addEventListener('click', () => nav('settings'));
+  $('#err-close')?.addEventListener('click', () => { state.lastError = null; render(); });
 }
 
 function renderLoading(v) {
@@ -247,8 +258,9 @@ async function runAnalysis(plant) {
     nav(`visit/${p.id}/${visit.id}`);
   } catch (e) {
     state.loading = null;
+    state.lastError = friendlyError(e);
     render();
-    toast(friendlyError(e), 5000);
+    window.scrollTo(0, 0);
   }
 }
 
@@ -708,6 +720,14 @@ function renderSettings(v) {
     </div>
 
     <div class="card">
+      <div class="card-head">${ICON.alert}<h3>Fehlerprotokoll</h3></div>
+      ${errorLog.all().length ? `<p class="small muted">Wenn etwas nicht klappt: Text kopieren und an den Entwickler schicken. Enthält keine Fotos und keine Schlüssel.</p>
+        <pre class="log" id="log-text">${esc(errorLog.all().map((x) => `${new Date(x.t).toLocaleString('de-DE')} · ${x.label}\n  ${x.items.join('\n  ')}`).join('\n\n'))}</pre>
+        <div class="btn-row" style="margin-top:10px"><button class="btn small secondary" id="log-copy">Kopieren</button><button class="btn small ghost" id="log-clear">Leeren</button></div>`
+        : '<p class="small muted">Keine Fehler aufgezeichnet. 🌿</p>'}
+    </div>
+
+    <div class="card">
       <h3>Datenschutz</h3>
       <p class="small" style="margin-top:6px">Fotos werden zur Analyse an Google (Gemini API) gesendet; im kostenlosen Tarif darf Google sie zur Verbesserung seiner Dienste nutzen – keine Fotos mit Personen hochladen.
       Deine Pflanzen und Fotos werden nur auf diesem Gerät gespeichert. Für Mitteilungen werden nur Erinnerungstexte (Pflanzenname, Aufgabe, Zeitpunkt) verschlüsselt als GitHub-Secret abgelegt.</p>
@@ -761,6 +781,10 @@ function renderSettings(v) {
     setBusy(e.currentTarget, false);
   });
   $('#push-off')?.addEventListener('click', () => { if (confirm('Erinnerungen wirklich ausschalten?')) { disablePush(); render(); } });
+  $('#log-copy')?.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('#log-text').textContent); toast('Kopiert'); } catch { toast('Bitte Text markieren und kopieren'); }
+  });
+  $('#log-clear')?.addEventListener('click', () => { errorLog.clear(); render(); });
   $('#wipe').addEventListener('click', async () => {
     if (!confirm('Alle Pflanzen, Fotos, Fragen und Schlüssel auf diesem Gerät löschen?')) return;
     await db.clearAll();

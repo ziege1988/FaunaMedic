@@ -301,3 +301,6 @@ details summary { cursor: pointer; padding: 4px 0; }
 .composer { margin-bottom: 0; }
 .composer textarea { min-height: 64px; }
 .error-box { background: var(--bad-bg); color: var(--bad-ink); border-radius: var(--radius-sm); padding: 10px 12px; font-size: .85rem; user-select: text; -webkit-user-select: text; }
+.log { white-space: pre-wrap; word-break: break-word; font-size: .72rem; line-height: 1.45; background: var(--grey-50); border-radius: var(--radius-sm); padding: 10px; max-height: 260px; overflow: auto; margin: 10px 0 0; user-select: text; -webkit-user-select: text; }
+
+[hidden] { display: none !important; }

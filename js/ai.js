@@ -6,7 +6,8 @@
 import { store, clamp, str, arr, today, isValidISO } from './util.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+// Aliase zeigen bei Google immer auf das aktuelle Modell; gemini-2.0-flash wurde am 1.6.2026 abgeschaltet.
+const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest'];
 
 export function getSettings() {
   return {
@@ -152,12 +153,37 @@ Antworte AUSSCHLIESSLICH mit gültigem JSON:
 /* ------------------------------------------------------------------ *
  * API-Zugriff
  * ------------------------------------------------------------------ */
+const REQUEST_TIMEOUT_MS = 120000;
+const MODEL_CACHE_KEY = 'fm.modelCache3';
+
+/** Fehlerprotokoll (lokal, für die Fehlersuche – enthält keine Fotos und keine Schlüssel) */
+export const errorLog = {
+  all: () => store.get('fm.errorLog', []),
+  add(entry) {
+    const list = [{ t: Date.now(), ...entry }, ...this.all()].slice(0, 20);
+    store.set('fm.errorLog', list);
+  },
+  clear: () => store.del('fm.errorLog'),
+};
+
 export async function apiFetch(path, opts = {}) {
   const { apiKey } = getSettings();
-  const res = await fetch(`${API_BASE}/${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey, ...(opts.headers || {}) },
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeout || REQUEST_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/${path}`, {
+      method: opts.method || 'GET',
+      body: opts.body,
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') throw Object.assign(new Error('Zeitüberschreitung – die KI hat zu lange gebraucht'), { status: 'timeout' });
+    throw Object.assign(new Error(`Verbindung abgebrochen (${e.message})`), { status: 'network' });
+  }
+  clearTimeout(timer);
   if (!res.ok) {
     let msg = '';
     try { msg = (await res.json()).error?.message || ''; } catch { /* egal */ }
@@ -166,28 +192,34 @@ export async function apiFetch(path, opts = {}) {
   return res.json();
 }
 
-/** Ermittelt automatisch die besten verfügbaren kostenlosen "Flash"-Modelle. */
+const isKeyError = (e) => e.status === 401
+  || ([400, 403].includes(e.status) && /api[ _-]?key|API_KEY|unregistered callers|ACCESS_TOKEN_TYPE|credential/i.test(e.message || ''));
+
+/** Versionsnummer aus dem Modellnamen (Aliase wie "gemini-flash-latest" → 0 = unbekannt) */
+const modelVersion = (n) => parseFloat(n.match(/^gemini-([\d.]+)/)?.[1] || '0');
+
+/** Ermittelt automatisch die besten verfügbaren "Flash"-Modelle (robust gegen Abschaltungen bei Google). */
 export async function resolveModels() {
   const { model } = getSettings();
   if (model && model !== 'auto') return [model, ...FALLBACK_MODELS.filter((m) => m !== model)];
-  const cached = store.get('fm.modelCache');
-  if (cached && Date.now() - cached.t < 24 * 3600 * 1000 && cached.list?.length) return cached.list;
+  const cached = store.get(MODEL_CACHE_KEY);
+  if (cached && Date.now() - cached.t < 12 * 3600 * 1000 && cached.list?.length) return cached.list;
   try {
-    const data = await apiFetch('models?pageSize=200');
+    const data = await apiFetch('models?pageSize=200', { timeout: 20000 });
     const list = (data.models || [])
       .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
       .map((m) => m.name.replace(/^models\//, ''))
-      .filter((n) => /^gemini-[\d.]+-flash/.test(n) && !/(image|tts|audio|live|thinking|exp|robotics|computer|native)/.test(n))
+      .filter((n) => /^gemini-[\d.]+-flash/.test(n) && !/(image|tts|audio|live|thinking|exp|robotics|computer|native|embedding)/.test(n))
       .sort((a, b) => {
-        const score = (n) => parseFloat(n.match(/gemini-([\d.]+)/)?.[1] || '0') * 100
-          - (/preview/.test(n) ? 50 : 0) - (/lite/.test(n) ? 20 : 0) - (/-\d{3,}$/.test(n) ? 1 : 0);
+        const score = (n) => modelVersion(n) * 100
+          - (/preview/.test(n) ? 50 : 0) - (/lite/.test(n) ? 30 : 0) - (/-\d{3,}$/.test(n) ? 1 : 0);
         return score(b) - score(a);
       });
-    const merged = [...new Set([...list.slice(0, 4), ...FALLBACK_MODELS])];
-    store.set('fm.modelCache', { t: Date.now(), list: merged });
+    const merged = [...new Set([...list.slice(0, 3), ...FALLBACK_MODELS])].slice(0, 5);
+    store.set(MODEL_CACHE_KEY, { t: Date.now(), list: merged });
     return merged;
   } catch (e) {
-    if ([400, 401, 403].includes(e.status)) throw e;
+    if (isKeyError(e)) throw e;
     return FALLBACK_MODELS;
   }
 }
@@ -196,15 +228,17 @@ function parseJson(text) {
   const t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
   try { return JSON.parse(t); } catch { /* weiter */ }
   const a = t.indexOf('{'); const b = t.lastIndexOf('}');
-  if (a >= 0 && b > a) return JSON.parse(t.slice(a, b + 1));
-  throw new Error('Antwort der KI war unvollständig');
+  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch { /* weiter */ } }
+  throw Object.assign(new Error('Antwort der KI war unvollständig'), { status: 'parse' });
 }
 
 export function friendlyError(e) {
   if (!navigator.onLine) return 'Du bist offline. Für die KI brauchst du eine Internetverbindung.';
-  if ((e.status === 400 && /api key/i.test(e.message)) || e.status === 401 || e.status === 403) return 'Der KI-Schlüssel wird nicht akzeptiert. Bitte prüfe ihn in den Einstellungen.';
+  if (isKeyError(e)) return 'Der KI-Schlüssel wird nicht akzeptiert. Bitte prüfe ihn in den Einstellungen.';
   if (e.status === 429) return 'Das kostenlose KI-Kontingent ist gerade aufgebraucht. Bitte in einer Minute (oder morgen) erneut versuchen.';
-  if (e.status >= 500) return 'Der KI-Dienst ist gerade überlastet. Bitte gleich noch einmal versuchen.';
+  if (e.status === 'timeout') return 'Die KI hat zu lange gebraucht. Bitte noch einmal versuchen – am besten mit 1–2 Fotos.';
+  if (e.status === 'network') return 'Die Verbindung ist abgebrochen. Bitte lass die App während der Analyse geöffnet und versuche es erneut.';
+  if (typeof e.status === 'number' && e.status >= 500) return 'Der KI-Dienst ist gerade überlastet. Bitte gleich noch einmal versuchen.';
   return 'Das hat nicht geklappt: ' + (e.message || 'Unbekannter Fehler');
 }
 
@@ -221,36 +255,74 @@ function toContents(turns) {
   }));
 }
 
-export async function askGemini(turns, system, temperature = 0.3) {
-  const body = {
-    system_instruction: { parts: [{ text: system }] },
-    contents: toContents(turns),
-    generationConfig: { temperature, responseMimeType: 'application/json' },
-  };
+/** Wie "schwer" ein Fehler für die Anzeige wiegt (der aussagekräftigste wird gezeigt). */
+const errorRank = (e) => (e.status === 429 ? 6 : e.status === 'timeout' ? 5 : e.status === 'network' ? 5
+  : typeof e.status === 'number' && e.status >= 500 ? 4 : e.status === 'parse' || e.status === 'truncated' ? 3 : e.status === 'blocked' ? 3 : 1);
+
+/**
+ * mode: 'normal' | 'fast' (schnelleres Nachdenken bei Gemini 3 für Zweitprüfung/Fragen)
+ * Hinweis: Gemini 3 soll mit Standard-Temperatur laufen – niedrigere Werte können zu Endlosschleifen führen.
+ */
+export async function askGemini(turns, system, mode = 'normal', label = 'KI') {
   const models = await resolveModels();
-  let lastErr;
+  const errors = [];
   for (const m of models) {
-    try {
-      const data = await apiFetch(`models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', body: JSON.stringify(body) });
-      const raw = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
-      if (!raw) throw Object.assign(new Error('Leere Antwort (evtl. vom Sicherheitsfilter blockiert)'), { status: 0 });
-      store.set('fm.lastModel', m);
-      return { raw, json: parseJson(raw) };
-    } catch (e) {
-      lastErr = e;
-      if ((e.status === 400 && /api key/i.test(e.message)) || e.status === 401 || e.status === 403) break;
-      if (e.status === 404) store.del('fm.modelCache');
+    const useThinkingCfg = mode === 'fast' && modelVersion(m) >= 3;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const generationConfig = { responseMimeType: 'application/json' };
+      if (useThinkingCfg && attempt === 0) generationConfig.thinkingConfig = { thinkingLevel: 'low' };
+      const body = { system_instruction: { parts: [{ text: system }] }, contents: toContents(turns), generationConfig };
+      try {
+        const data = await apiFetch(`models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', body: JSON.stringify(body) });
+        const cand = data.candidates?.[0];
+        if (data.promptFeedback?.blockReason) throw Object.assign(new Error(`Anfrage blockiert (${data.promptFeedback.blockReason})`), { status: 'blocked' });
+        const raw = (cand?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
+        if (cand?.finishReason === 'MAX_TOKENS') throw Object.assign(new Error('Antwort wurde abgeschnitten (zu lang)'), { status: 'truncated' });
+        if (!raw) throw Object.assign(new Error(`Leere Antwort (${cand?.finishReason || 'ohne Grund'})`), { status: 'blocked' });
+        const json = parseJson(raw);
+        store.set('fm.lastModel', m);
+        if (errors.length) logErrors(`${label} (ausgewichen auf ${m})`, errors);
+        return { raw, json };
+      } catch (e) {
+        errors.push({ model: m, e });
+        if (isKeyError(e)) { logErrors(label, errors); throw e; }
+        // Unbekannter Parameter (thinkingLevel) → gleiches Modell ohne ihn nochmal; Überlastung → kurz warten, nochmal
+        if (attempt === 0 && e.status === 400 && generationConfig.thinkingConfig) continue;
+        if (attempt === 0 && typeof e.status === 'number' && e.status >= 500) { await new Promise((r) => setTimeout(r, 2500)); continue; }
+        if (e.status === 404) store.del(MODEL_CACHE_KEY);
+        break; // nächstes Modell
+      }
     }
   }
-  throw lastErr;
+  logErrors(label, errors);
+  const best = errors.map((x) => x.e).sort((a, b) => errorRank(b) - errorRank(a))[0] || new Error('Kein KI-Modell erreichbar');
+  best.details = errors.map((x) => `${x.model}: ${x.e.status} ${x.e.message}`.slice(0, 220));
+  throw best;
+}
+
+function logErrors(label, errors) {
+  if (!errors.length) return;
+  errorLog.add({ label, items: errors.map((x) => `${x.model} → ${x.e.status ?? '?'}: ${String(x.e.message || '').slice(0, 200)}`) });
 }
 
 export async function testConnection() {
   const models = await resolveModels();
-  await apiFetch(`models/${encodeURIComponent(models[0])}:generateContent`, {
-    method: 'POST', body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Antworte nur mit: OK' }] }] }),
-  });
-  return models[0];
+  const errors = [];
+  for (const m of models) {
+    try {
+      await apiFetch(`models/${encodeURIComponent(m)}:generateContent`, {
+        method: 'POST', timeout: 30000, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Antworte nur mit: OK' }] }] }),
+      });
+      store.set('fm.lastModel', m);
+      if (errors.length) logErrors('Verbindungstest', errors);
+      return m;
+    } catch (e) {
+      errors.push({ model: m, e });
+      if (isKeyError(e)) break;
+    }
+  }
+  logErrors('Verbindungstest', errors);
+  throw errors[0]?.e || new Error('Kein Modell erreichbar');
 }
 
 /* ------------------------------------------------------------------ *
@@ -332,14 +404,14 @@ export async function diagnose({ contextText, images, previous }, onStep = () =>
   const turns = [{ role: 'user', parts }];
 
   onStep('Ich schaue mir deine Pflanze genau an …');
-  const first = await askGemini(turns, DIAGNOSE_PROMPT, 0.3);
+  const first = await askGemini(turns, DIAGNOSE_PROMPT, 'normal', 'Diagnose');
   let result = normalizeDiagnosis(first.json);
   let raw = first.raw;
 
   if (getSettings().verify) {
     onStep('Zweitprüfung: Ich hinterfrage meine Diagnose …');
     try {
-      const check = await askGemini([{ role: 'user', parts: [...parts, `ERSTDIAGNOSE DES KOLLEGEN (bitte kritisch prüfen):\n${first.raw}`] }], VERIFY_PROMPT, 0.2);
+      const check = await askGemini([{ role: 'user', parts: [...parts, `ERSTDIAGNOSE DES KOLLEGEN (bitte kritisch prüfen):\n${first.raw}`] }], VERIFY_PROMPT, 'fast', 'Zweitprüfung');
       result = normalizeDiagnosis(check.json);
       if (!result.pruefung) result.pruefung = { ergebnis: 'bestaetigt', hinweise: '' };
       raw = check.raw;
@@ -354,7 +426,7 @@ export async function diagnose({ contextText, images, previous }, onStep = () =>
 /** Nachfrage/Hinterfragen innerhalb einer Untersuchung. */
 export async function followUp(turns, text, images = []) {
   const t = [...turns, { role: 'user', parts: [...images.map((img) => ({ img })), (text || 'Hier ist das angefragte Foto.') + '\nBitte prüfe deine Einschätzung kritisch neu und gib das vollständige, aktualisierte JSON zurück.'] }];
-  const res = await askGemini(t, DIAGNOSE_PROMPT, 0.3);
+  const res = await askGemini(t, DIAGNOSE_PROMPT, 'normal', 'Nachfrage');
   const result = normalizeDiagnosis(res.json);
   result.pruefung = { ergebnis: 'angepasst', hinweise: 'Neu geprüft mit deinen Angaben.' };
   return { result, turns: [...t, { role: 'model', parts: [res.raw] }] };
@@ -370,6 +442,6 @@ export async function askQuestion({ profileText, images, history, question }) {
   images.forEach((img, i) => { parts.push(`Foto ${i + 1}:`); parts.push({ img }); });
   parts.push(`MEINE FRAGE: ${question}`);
   turns.push({ role: 'user', parts });
-  const res = await askGemini(turns, QUESTION_PROMPT, 0.4);
+  const res = await askGemini(turns, QUESTION_PROMPT, 'fast', 'Sprechstunde');
   return normalizeAnswer(res.json);
 }
