@@ -6,8 +6,8 @@
 import { store, clamp, str, arr, today, isValidISO } from './util.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-// Aliase zeigen bei Google immer auf das aktuelle Modell; gemini-2.0-flash wurde am 1.6.2026 abgeschaltet.
-const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest'];
+// Aliase zeigen bei Google immer auf das aktuelle Modell (2.0-flash abgeschaltet, 2.5-flash für neue Nutzer gesperrt).
+const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
 
 export function getSettings() {
   return {
@@ -153,8 +153,15 @@ Antworte AUSSCHLIESSLICH mit gültigem JSON:
 /* ------------------------------------------------------------------ *
  * API-Zugriff
  * ------------------------------------------------------------------ */
-const REQUEST_TIMEOUT_MS = 120000;
-const MODEL_CACHE_KEY = 'fm.modelCache3';
+const REQUEST_TIMEOUT_MS = 90000;
+const MODEL_CACHE_KEY = 'fm.modelCache4';
+const ROUND_DELAYS_S = [0, 15, 30]; // bei Überlastung: bis zu 3 Durchgänge mit Pause
+
+/** Fortschrittsmeldungen an die Oberfläche (z. B. "KI ausgelastet – neuer Versuch in 15 s") */
+let statusListener = null;
+export const onAiStatus = (fn) => { statusListener = fn; };
+const status = (t) => { try { statusListener?.(t); } catch { /* egal */ } };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Fehlerprotokoll (lokal, für die Fehlersuche – enthält keine Fotos und keine Schlüssel) */
 export const errorLog = {
@@ -206,16 +213,18 @@ export async function resolveModels() {
   if (cached && Date.now() - cached.t < 12 * 3600 * 1000 && cached.list?.length) return cached.list;
   try {
     const data = await apiFetch('models?pageSize=200', { timeout: 20000 });
-    const list = (data.models || [])
+    const dead = store.get('fm.deadModels', []);
+    const names = (data.models || [])
       .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
       .map((m) => m.name.replace(/^models\//, ''))
       .filter((n) => /^gemini-[\d.]+-flash/.test(n) && !/(image|tts|audio|live|thinking|exp|robotics|computer|native|embedding)/.test(n))
-      .sort((a, b) => {
-        const score = (n) => modelVersion(n) * 100
-          - (/preview/.test(n) ? 50 : 0) - (/lite/.test(n) ? 30 : 0) - (/-\d{3,}$/.test(n) ? 1 : 0);
-        return score(b) - score(a);
-      });
-    const merged = [...new Set([...list.slice(0, 3), ...FALLBACK_MODELS])].slice(0, 5);
+      .filter((n) => !dead.includes(n));
+    const score = (n) => modelVersion(n) * 100 - (/preview/.test(n) ? 50 : 0) - (/-\d{3,}$/.test(n) ? 1 : 0);
+    const byScore = (a, b) => score(b) - score(a);
+    const flash = names.filter((n) => !/lite/.test(n)).sort(byScore);
+    const lite = names.filter((n) => /lite/.test(n)).sort(byScore);
+    // Bestes Flash zuerst, dann ein "Lite"-Modell (bei Überlastung oft noch verfügbar), dann Alternativen
+    const merged = [...new Set([flash[0], lite[0], flash[1], ...FALLBACK_MODELS].filter(Boolean))].slice(0, 5);
     store.set(MODEL_CACHE_KEY, { t: Date.now(), list: merged });
     return merged;
   } catch (e) {
@@ -237,8 +246,8 @@ export function friendlyError(e) {
   if (isKeyError(e)) return 'Der KI-Schlüssel wird nicht akzeptiert. Bitte prüfe ihn in den Einstellungen.';
   if (e.status === 429) return 'Das kostenlose KI-Kontingent ist gerade aufgebraucht. Bitte in einer Minute (oder morgen) erneut versuchen.';
   if (e.status === 'timeout') return 'Die KI hat zu lange gebraucht. Bitte noch einmal versuchen – am besten mit 1–2 Fotos.';
-  if (e.status === 'network') return 'Die Verbindung ist abgebrochen. Bitte lass die App während der Analyse geöffnet und versuche es erneut.';
-  if (typeof e.status === 'number' && e.status >= 500) return 'Der KI-Dienst ist gerade überlastet. Bitte gleich noch einmal versuchen.';
+  if (e.status === 'network') return 'Die Verbindung ist abgebrochen. Bitte lass die App während der Analyse geöffnet (Bildschirm nicht sperren) und versuche es erneut – im WLAN klappt es meist zuverlässiger.';
+  if (typeof e.status === 'number' && e.status >= 500) return 'Googles kostenlose KI ist gerade stark ausgelastet (das liegt nicht an dir oder der App). Ich habe es mehrmals versucht – bitte in ein paar Minuten noch einmal probieren.';
   return 'Das hat nicht geklappt: ' + (e.message || 'Unbekannter Fehler');
 }
 
@@ -264,39 +273,57 @@ const errorRank = (e) => (e.status === 429 ? 6 : e.status === 'timeout' ? 5 : e.
  * Hinweis: Gemini 3 soll mit Standard-Temperatur laufen – niedrigere Werte können zu Endlosschleifen führen.
  */
 export async function askGemini(turns, system, mode = 'normal', label = 'KI') {
-  const models = await resolveModels();
+  let models = await resolveModels();
   const errors = [];
-  for (const m of models) {
-    const useThinkingCfg = mode === 'fast' && modelVersion(m) >= 3;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const generationConfig = { responseMimeType: 'application/json' };
-      if (useThinkingCfg && attempt === 0) generationConfig.thinkingConfig = { thinkingLevel: 'low' };
-      const body = { system_instruction: { parts: [{ text: system }] }, contents: toContents(turns), generationConfig };
-      try {
-        const data = await apiFetch(`models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', body: JSON.stringify(body) });
-        const cand = data.candidates?.[0];
-        if (data.promptFeedback?.blockReason) throw Object.assign(new Error(`Anfrage blockiert (${data.promptFeedback.blockReason})`), { status: 'blocked' });
-        const raw = (cand?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
-        if (cand?.finishReason === 'MAX_TOKENS') throw Object.assign(new Error('Antwort wurde abgeschnitten (zu lang)'), { status: 'truncated' });
-        if (!raw) throw Object.assign(new Error(`Leere Antwort (${cand?.finishReason || 'ohne Grund'})`), { status: 'blocked' });
-        const json = parseJson(raw);
-        store.set('fm.lastModel', m);
-        if (errors.length) logErrors(`${label} (ausgewichen auf ${m})`, errors);
-        return { raw, json };
-      } catch (e) {
-        errors.push({ model: m, e });
-        if (isKeyError(e)) { logErrors(label, errors); throw e; }
-        // Unbekannter Parameter (thinkingLevel) → gleiches Modell ohne ihn nochmal; Überlastung → kurz warten, nochmal
-        if (attempt === 0 && e.status === 400 && generationConfig.thinkingConfig) continue;
-        if (attempt === 0 && typeof e.status === 'number' && e.status >= 500) { await new Promise((r) => setTimeout(r, 2500)); continue; }
-        if (e.status === 404) store.del(MODEL_CACHE_KEY);
-        break; // nächstes Modell
+  const contents = toContents(turns);
+  const transient = (e) => e.status === 429 || e.status === 'network' || e.status === 'timeout' || (typeof e.status === 'number' && e.status >= 500);
+
+  for (let round = 0; round < ROUND_DELAYS_S.length && models.length; round++) {
+    if (ROUND_DELAYS_S[round]) {
+      for (let s = ROUND_DELAYS_S[round]; s > 0; s--) { status(`Die KI ist gerade stark ausgelastet – neuer Versuch in ${s} s …`); await sleep(1000); }
+      status('Neuer Versuch …');
+    }
+    const stillOk = [];
+    let hadTransient = false;
+    for (const m of models) {
+      let useThinking = mode === 'fast' && modelVersion(m) >= 3;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const generationConfig = { responseMimeType: 'application/json' };
+        if (useThinking) generationConfig.thinkingConfig = { thinkingLevel: 'low' };
+        const body = { system_instruction: { parts: [{ text: system }] }, contents, generationConfig };
+        try {
+          const data = await apiFetch(`models/${encodeURIComponent(m)}:generateContent`, { method: 'POST', body: JSON.stringify(body) });
+          const cand = data.candidates?.[0];
+          if (data.promptFeedback?.blockReason) throw Object.assign(new Error(`Anfrage blockiert (${data.promptFeedback.blockReason})`), { status: 'blocked' });
+          const raw = (cand?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
+          if (cand?.finishReason === 'MAX_TOKENS') throw Object.assign(new Error('Antwort wurde abgeschnitten (zu lang)'), { status: 'truncated' });
+          if (!raw) throw Object.assign(new Error(`Leere Antwort (${cand?.finishReason || 'ohne Grund'})`), { status: 'blocked' });
+          const json = parseJson(raw);
+          store.set('fm.lastModel', m);
+          if (errors.length) logErrors(`${label} (geklappt mit ${m})`, errors);
+          return { raw, json };
+        } catch (e) {
+          errors.push({ model: m, e });
+          if (isKeyError(e)) { logErrors(label, errors); throw e; }
+          if (attempt === 0 && e.status === 400 && useThinking) { useThinking = false; continue; } // Parameter unbekannt → ohne
+          if (e.status === 404) {
+            // Modell abgeschaltet/gesperrt → künftig überspringen
+            if (!FALLBACK_MODELS.includes(m)) store.set('fm.deadModels', [...new Set([...store.get('fm.deadModels', []), m])]);
+            store.del(MODEL_CACHE_KEY);
+          } else if (transient(e) || e.status === 'parse' || e.status === 'truncated') {
+            stillOk.push(m);
+          }
+          if (transient(e)) { hadTransient = true; status('Ein KI-Modell ist ausgelastet – ich versuche ein anderes …'); }
+          break; // nächstes Modell
+        }
       }
     }
+    // Nächster Durchgang nur, wenn die Fehler vorübergehend waren
+    if (!hadTransient || !stillOk.length) break;
+    models = stillOk;
   }
   logErrors(label, errors);
   const best = errors.map((x) => x.e).sort((a, b) => errorRank(b) - errorRank(a))[0] || new Error('Kein KI-Modell erreichbar');
-  best.details = errors.map((x) => `${x.model}: ${x.e.status} ${x.e.message}`.slice(0, 220));
   throw best;
 }
 

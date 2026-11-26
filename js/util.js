@@ -46,7 +46,7 @@ export function relDay(iso) {
 export const fmtTimestamp = (t) => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
 
 /* ---------- Bilder ---------- */
-export function compressImage(file, maxSide = 1280, quality = 0.82) {
+export function compressImage(file, maxSide = 1024, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();

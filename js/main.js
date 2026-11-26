@@ -9,13 +9,13 @@ import {
   today, fmtDate, relDay, daysUntil, fmtTimestamp,
 } from './util.js';
 import { db } from './db.js';
-import { getSettings, diagnose, followUp, askQuestion, friendlyError, testConnection, errorLog } from './ai.js';
+import { getSettings, diagnose, followUp, askQuestion, friendlyError, testConnection, errorLog, onAiStatus } from './ai.js';
 import {
   buildPlan, addQuestionTasks, dueItems, updateBadge, pushSettings, setupPush, sendTest, disablePush,
   syncReminders, scheduleSync, isStandalone, pushSupported,
 } from './reminders.js';
 
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 const MAX_PHOTOS = 3;
 const LOCATIONS = ['Wohnung', 'Balkon / Terrasse', 'Garten', 'Gewächshaus'];
 const STATUS_LABEL = { gesund: 'Gesund', natuerlich: 'Natürlicher Vorgang', leicht: 'Leichte Probleme', mittel: 'Braucht Hilfe', stark: 'Dringend handeln' };
@@ -861,6 +861,7 @@ function initServiceWorker() {
  * ------------------------------------------------------------------ */
 (async function start() {
   initPhotoInputs();
+  onAiStatus((t) => (state.loading ? setLoadingText(t) : toast(t, 3000)));
   initServiceWorker();
   await db.migrate();
   await render();
