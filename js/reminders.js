@@ -10,14 +10,39 @@ import { store, uid, today, addDays, parseISO, daysUntil } from './util.js';
 /* ------------------------------------------------------------------ *
  * Behandlungsplan
  * ------------------------------------------------------------------ */
+const daysBetween = (a, b) => Math.round((parseISO(b) - parseISO(a)) / 86400000);
+
+/* Aufgaben: einmalig ({ date, done }) oder wiederkehrend ({ date = Start, repeat: { every, until }, doneDates: [] }) */
+export const repeatLabel = (r) => (!r ? '' : r.every === 1 ? 'täglich' : r.every === 7 ? 'wöchentlich'
+  : r.every === 14 ? 'alle 2 Wochen' : `alle ${r.every} Tage`);
+export function occursOn(t, date) {
+  if (!t.repeat) return t.date === date;
+  if (date < t.date || date > t.repeat.until) return false;
+  return daysBetween(t.date, date) % t.repeat.every === 0;
+}
+export const isDoneOn = (t, date) => (t.repeat ? (t.doneDates || []).includes(date) : !!t.done);
+export const isActive = (t) => (t.repeat ? t.repeat.until >= today() : !t.done);
+export function nextOccurrence(t, from = today()) {
+  if (!t.repeat) return t.date;
+  let d = t.date;
+  if (d < from) { const k = Math.ceil(daysBetween(t.date, from) / t.repeat.every); d = addDays(t.date, k * t.repeat.every); }
+  return d <= t.repeat.until ? d : null;
+}
+function makeTask({ start, titel, details, every, until, source }) {
+  const repeat = every > 0 ? { every, until: until < start ? start : until } : null;
+  return { id: uid(), date: start, titel, details, done: false, doneDates: [], repeat, source };
+}
+
 export function buildPlan(result, visitId, oldPlan) {
-  const keep = (oldPlan?.tasks || []).filter((t) => t.source === 'frage' && !t.done);
-  const tasks = result.behandlungsplan.map((b) => ({
-    id: uid(), date: addDays(today(), b.tag), titel: b.titel, details: b.details, done: false, source: 'plan',
-  }));
-  const checkup = result.kontrolle_in_tagen > 0
-    ? { date: addDays(today(), result.kontrolle_in_tagen), foto: result.kontrolle_foto, done: false }
-    : null;
+  const keep = (oldPlan?.tasks || []).filter((t) => t.source === 'frage' && isActive(t));
+  const checkDate = result.kontrolle_in_tagen > 0 ? addDays(today(), result.kontrolle_in_tagen) : null;
+  const tasks = result.behandlungsplan.map((b) => {
+    const start = addDays(today(), b.tag);
+    // Wiederkehrende Pflege läuft standardmäßig bis zum Kontrolltermin (= "bis zur Erholung"), sonst max. 14 Tage
+    const until = b.bis_tag > 0 ? addDays(today(), b.bis_tag) : (checkDate || addDays(start, 14));
+    return makeTask({ start, titel: b.titel, details: b.details, every: b.wiederholen_alle_tage, until, source: 'plan' });
+  });
+  const checkup = checkDate ? { date: checkDate, foto: result.kontrolle_foto, done: false } : null;
   return { visitId, created: Date.now(), tasks: [...tasks, ...keep].sort((a, b) => a.date.localeCompare(b.date)), checkup };
 }
 
@@ -25,7 +50,7 @@ export function addQuestionTasks(plant, aufgaben) {
   plant.plan = plant.plan || { visitId: null, created: Date.now(), tasks: [], checkup: null };
   for (const a of aufgaben) {
     if (plant.plan.tasks.some((t) => t.date === a.datum && t.titel === a.titel)) continue;
-    plant.plan.tasks.push({ id: uid(), date: a.datum, titel: a.titel, details: a.details, done: false, source: 'frage' });
+    plant.plan.tasks.push(makeTask({ start: a.datum, titel: a.titel, details: a.details, every: a.wiederholen_alle_tage, until: a.bis_datum || addDays(a.datum, 90), source: 'frage' }));
   }
   plant.plan.tasks.sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -33,9 +58,13 @@ export function addQuestionTasks(plant, aufgaben) {
 /** Alles, was heute (oder überfällig) ansteht – über alle Pflanzen. */
 export function dueItems(plants) {
   const out = [];
+  const d0 = today();
   for (const p of plants) {
     if (!p.plan) continue;
-    for (const t of p.plan.tasks) if (!t.done && daysUntil(t.date) <= 0) out.push({ plant: p, kind: 'task', date: t.date, task: t });
+    for (const t of p.plan.tasks) {
+      if (t.repeat) { if (occursOn(t, d0) && !isDoneOn(t, d0)) out.push({ plant: p, kind: 'task', date: d0, task: t }); }
+      else if (!t.done && daysUntil(t.date) <= 0) out.push({ plant: p, kind: 'task', date: t.date, task: t });
+    }
     const c = p.plan.checkup;
     if (c && !c.done && daysUntil(c.date) <= 0) out.push({ plant: p, kind: 'checkup', date: c.date });
   }
@@ -216,7 +245,13 @@ export function buildReminders(plants, time) {
   for (const p of plants) {
     if (!p.plan) continue;
     const byDate = {};
-    for (const t of p.plan.tasks) if (!t.done && daysUntil(t.date) >= -1) (byDate[t.date] = byDate[t.date] || []).push(t.titel);
+    const from = addDays(today(), -1);
+    for (const t of p.plan.tasks) {
+      if (!t.repeat) { if (!t.done && t.date >= from) (byDate[t.date] = byDate[t.date] || []).push(t.titel); continue; }
+      for (let d = nextOccurrence(t, from); d && d <= t.repeat.until; d = addDays(d, t.repeat.every)) {
+        if (!isDoneOn(t, d)) (byDate[d] = byDate[d] || []).push(t.titel);
+      }
+    }
     for (const [date, titles] of Object.entries(byDate)) {
       list.push({
         id: `${p.id}-t-${date}`, at: atISO(date, time),
@@ -235,7 +270,7 @@ export function buildReminders(plants, time) {
       });
     }
   }
-  return list.sort((a, b) => a.at.localeCompare(b.at)).slice(0, 150);
+  return list.sort((a, b) => a.at.localeCompare(b.at)).slice(0, 200);
 }
 
 const hash = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };

@@ -304,3 +304,5 @@ details summary { cursor: pointer; padding: 4px 0; }
 .log { white-space: pre-wrap; word-break: break-word; font-size: .72rem; line-height: 1.45; background: var(--grey-50); border-radius: var(--radius-sm); padding: 10px; max-height: 260px; overflow: auto; margin: 10px 0 0; user-select: text; -webkit-user-select: text; }
 
 [hidden] { display: none !important; }
+.series { padding: 6px 0 6px 34px; }
+.series .badge, .task .badge { margin-left: 4px; vertical-align: 1px; }

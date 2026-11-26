@@ -6,16 +6,16 @@
  */
 import {
   $, $$, esc, paras, uid, store, toast, ICON, pickPhotos, initPhotoInputs,
-  today, fmtDate, relDay, daysUntil, fmtTimestamp,
+  today, addDays, fmtDate, relDay, daysUntil, fmtTimestamp,
 } from './util.js';
 import { db } from './db.js';
 import { getSettings, diagnose, followUp, askQuestion, friendlyError, testConnection, errorLog, onAiStatus } from './ai.js';
 import {
   buildPlan, addQuestionTasks, dueItems, updateBadge, pushSettings, setupPush, sendTest, disablePush,
-  syncReminders, scheduleSync, isStandalone, pushSupported,
+  syncReminders, scheduleSync, isStandalone, pushSupported, repeatLabel, occursOn, isDoneOn, isActive, nextOccurrence,
 } from './reminders.js';
 
-const APP_VERSION = '2.1.1';
+const APP_VERSION = '2.2.0';
 const MAX_PHOTOS = 3;
 const LOCATIONS = ['Wohnung', 'Balkon / Terrasse', 'Garten', 'Gewächshaus'];
 const STATUS_LABEL = { gesund: 'Gesund', natuerlich: 'Natürlicher Vorgang', leicht: 'Leichte Probleme', mittel: 'Braucht Hilfe', stark: 'Dringend handeln' };
@@ -305,10 +305,20 @@ async function renderPlant(v, id) {
   if (!p) { toast('Diese Pflanze gibt es nicht mehr'); return nav('plants'); }
   const plan = p.plan;
   const c = plan?.checkup;
-  const open = (plan?.tasks || []).filter((t) => !t.done);
-  const done = (plan?.tasks || []).filter((t) => t.done);
+  const d0 = today();
+  const all = plan?.tasks || [];
+  const series = all.filter((t) => t.repeat && isActive(t));
+  const openOne = all.filter((t) => !t.repeat && !t.done);
+  const doneOne = all.filter((t) => !t.repeat && t.done);
+  const todayItems = [...openOne.filter((t) => t.date <= d0), ...series.filter((t) => occursOn(t, d0))];
   const byDate = {};
-  open.forEach((t) => (byDate[t.date] = byDate[t.date] || []).push(t));
+  openOne.filter((t) => t.date > d0).forEach((t) => (byDate[t.date] = byDate[t.date] || []).push(t));
+  const taskRow = (t, date) => {
+    const doneNow = t.repeat ? isDoneOn(t, date) : t.done;
+    return `<label class="task ${doneNow ? 'done' : ''}"><input type="checkbox" data-task="${t.id}" data-date="${date}" ${doneNow ? 'checked' : ''}>
+      <span><b>${esc(t.titel)}</b>${t.repeat ? ` <span class="badge ok">${repeatLabel(t.repeat)}</span>` : ''}${!t.repeat && t.date < d0 ? ` <span class="badge bad">seit ${fmtDate(t.date)}</span>` : ''}
+      ${t.details && !doneNow ? `<br><span class="sub">${esc(t.details)}</span>` : ''}</span></label>`;
+  };
   const lastQ = [...p.chat].reverse().find((m) => m.who === 'me');
   const ps = pushSettings();
 
@@ -334,13 +344,20 @@ async function renderPlant(v, id) {
 
     <div class="card">
       <div class="card-head">${ICON.bulb}<h3>Behandlungsplan</h3></div>
-      ${open.length ? Object.entries(byDate).map(([date, ts]) => `
-        <div class="plan-day ${daysUntil(date) < 0 ? 'overdue' : daysUntil(date) === 0 ? 'today' : ''}">
-          <div class="plan-date">${daysUntil(date) <= 0 ? (daysUntil(date) === 0 ? 'Heute' : `Überfällig (${fmtDate(date)})`) : `${relDay(date)[0].toUpperCase()}${relDay(date).slice(1)}${daysUntil(date) < 7 ? ` · ${fmtDate(date)}` : ''}`}</div>
-          ${ts.map((t) => `<label class="task"><input type="checkbox" data-task="${t.id}"><span><b>${esc(t.titel)}</b>${t.details ? `<br><span class="sub">${esc(t.details)}</span>` : ''}</span></label>`).join('')}
-        </div>`).join('') : '<p class="small muted">Keine offenen Aufgaben. 🌿</p>'}
-      ${done.length ? `<details style="margin-top:8px"><summary class="small muted">${done.length} erledigt</summary>
-        ${done.map((t) => `<label class="task done"><input type="checkbox" checked data-task="${t.id}"><span>${esc(t.titel)}</span></label>`).join('')}</details>` : ''}
+      ${todayItems.length ? `<div class="plan-day today"><div class="plan-date">Heute</div>${todayItems.map((t) => taskRow(t, d0)).join('')}</div>` : ''}
+      ${series.length ? `<div class="plan-day"><div class="plan-date">Regelmäßig bis zur Erholung</div>
+        ${series.map((t) => {
+          const nx = nextOccurrence(t, addDays(d0, 1));
+          return `<div class="series"><b>${esc(t.titel)}</b> <span class="badge ok">${repeatLabel(t.repeat)}</span>
+            <br><span class="sub">bis ${fmtDate(t.repeat.until, { weekday: 'short', day: 'numeric', month: 'long' })}${nx ? ` · nächstes Mal ${relDay(nx)}` : ''}</span>
+            ${t.details ? `<br><span class="sub">${esc(t.details)}</span>` : ''}</div>`;
+        }).join('')}</div>` : ''}
+      ${Object.entries(byDate).map(([date, ts]) => `
+        <div class="plan-day"><div class="plan-date">${relDay(date)[0].toUpperCase()}${relDay(date).slice(1)}${daysUntil(date) < 7 ? ` · ${fmtDate(date)}` : ''}</div>
+          ${ts.map((t) => taskRow(t, date)).join('')}</div>`).join('')}
+      ${!todayItems.length && !series.length && !Object.keys(byDate).length ? '<p class="small muted">Keine offenen Aufgaben. 🌿</p>' : ''}
+      ${doneOne.length ? `<details style="margin-top:8px"><summary class="small muted">${doneOne.length} erledigt</summary>
+        ${doneOne.map((t) => taskRow(t, t.date)).join('')}</details>` : ''}
     </div>
 
     <div class="card">
@@ -375,7 +392,11 @@ async function renderPlant(v, id) {
   $$('[data-task]', v).forEach((cb) => cb.addEventListener('change', async () => {
     const fresh = await db.getPlant(p.id);
     const t = fresh.plan.tasks.find((x) => x.id === cb.dataset.task);
-    if (t) t.done = cb.checked;
+    if (t?.repeat) {
+      const set = new Set(t.doneDates || []);
+      if (cb.checked) set.add(cb.dataset.date); else set.delete(cb.dataset.date);
+      t.doneDates = [...set];
+    } else if (t) t.done = cb.checked;
     await db.putPlant(fresh);
     afterChange();
     if (cb.checked) toast('Super, erledigt! 🌿');
@@ -472,7 +493,7 @@ async function renderVisit(v, plantId, visitId) {
 
     ${isPlanVisit ? `<div class="card tint"><div class="card-head">${ICON.calendar}<h3>Dein Behandlungsplan</h3></div>
       <ul class="list">
-        ${r.behandlungsplan.slice(0, 5).map((b) => `<li><span class="dot">${ICON.check}</span><span><b>${b.tag === 0 ? 'Heute' : b.tag === 1 ? 'Morgen' : `In ${b.tag} Tagen`}:</b> ${esc(b.titel)}</span></li>`).join('')}
+        ${r.behandlungsplan.slice(0, 6).map((b) => `<li><span class="dot">${ICON.check}</span><span><b>${b.wiederholen_alle_tage ? `${b.tag === 0 ? 'Ab heute' : `Ab Tag ${b.tag}`} ${repeatLabel({ every: b.wiederholen_alle_tage })}` : b.tag === 0 ? 'Heute' : b.tag === 1 ? 'Morgen' : `In ${b.tag} Tagen`}:</b> ${esc(b.titel)}${b.wiederholen_alle_tage ? ` <span class="sub">(bis ${b.bis_tag ? `Tag ${b.bis_tag}` : 'zur Kontrolle'})</span>` : ''}</span></li>`).join('')}
         ${p.plan.checkup ? `<li><span class="dot urgent">!</span><span><b>Kontrolltermin ${relDay(p.plan.checkup.date)}</b>${relDay(p.plan.checkup.date) === fmtDate(p.plan.checkup.date) ? '' : ` (${fmtDate(p.plan.checkup.date)})`}: ${esc(p.plan.checkup.foto || 'neues Foto machen')}</span></li>` : ''}
       </ul>
       <div style="margin-top:12px"><button class="btn secondary" id="to-plant">Zur Patientenakte</button></div></div>` : ''}
@@ -599,7 +620,7 @@ function renderAnswer(m) {
     ${a.schritte?.length ? `<ol class="steps-list">${a.schritte.map((s) => `<li><b>${esc(s.titel)}</b>${s.details ? `<br><span class="sub">${esc(s.details)}</span>` : ''}</li>`).join('')}</ol>` : ''}
     ${a.aufgaben?.length ? `<div class="tasks-offer">
       <div class="small" style="font-weight:600;margin-bottom:6px">${ICON.calendar.replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px"')} Termine dazu</div>
-      ${a.aufgaben.map((t) => `<div class="small">• ${fmtDate(t.datum, { day: 'numeric', month: 'long', year: 'numeric' })}: ${esc(t.titel)}</div>`).join('')}
+      ${a.aufgaben.map((t) => `<div class="small">• ${t.wiederholen_alle_tage ? `Ab ${fmtDate(t.datum, { day: 'numeric', month: 'long' })} ${repeatLabel({ every: t.wiederholen_alle_tage })}${t.bis_datum ? ` bis ${fmtDate(t.bis_datum, { day: 'numeric', month: 'long' })}` : ''}` : fmtDate(t.datum, { day: 'numeric', month: 'long', year: 'numeric' })}: ${esc(t.titel)}</div>`).join('')}
       ${m.tasksAdded ? '<p class="small" style="margin-top:6px;color:var(--green-600)">✓ In deinen Behandlungsplan übernommen</p>' : `<button class="btn small secondary" data-addtasks="${m.id}" style="margin-top:8px">Als Erinnerung übernehmen</button>`}
     </div>` : ''}
     ${a.rueckfragen?.length ? `<div class="small" style="margin-top:10px"><b>Damit ich genauer werde:</b> ${a.rueckfragen.map(esc).join(' · ')}</div>` : ''}

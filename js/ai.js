@@ -56,7 +56,7 @@ const DIAG_SCHEMA = `{
   "symptome": [ "" ],
   "ursachen": [ { "titel": "", "erklaerung": "", "wahrscheinlichkeit": 0 } ],
   "massnahmen": [ { "titel": "", "details": "", "dringend": false } ],
-  "behandlungsplan": [ { "tag": 0, "titel": "", "details": "" } ],
+  "behandlungsplan": [ { "tag": 0, "titel": "", "details": "", "wiederholen_alle_tage": 0, "bis_tag": 0 } ],
   "kontrolle_in_tagen": 7,
   "kontrolle_foto": "",
   "rueckfragen": [ "" ],
@@ -69,8 +69,13 @@ const DIAG_RULES = `Regeln: "sicherheit"/"wahrscheinlichkeit" ganze Zahlen 0–1
 "ursachen" absteigend, max. 4. "massnahmen" max. 6. Bei Sicherheit < 75 % MUSS mindestens eine Rückfrage oder ein Fotowunsch kommen.
 Texte: einleitung "Was wir hier sehen, ist eine …"; pflege_text "Deine Pflanze liebt … Damit sie blüht, braucht sie …";
 diagnose_text "Auf dem Foto erkenne ich …".
-BEHANDLUNGSPLAN wie beim Arzt: konkrete Aufgaben für die nächsten Tage. "tag" = Tage ab heute (0 = heute, max. 21),
-max. 8 Einträge, realistisch und in sinnvoller Reihenfolge (z. B. Tag 0 "Gießpause einlegen", Tag 3 "Erde mit Finger prüfen").
+BEHANDLUNGSPLAN wie beim Arzt: konkrete Aufgaben für die nächsten Tage. "tag" = Starttag ab heute (0 = heute, max. 21),
+max. 8 Einträge, realistisch und in sinnvoller Reihenfolge.
+EINMALIGE Aufgaben (z. B. "Befallene Blätter entfernen", "Umtopfen", "Standort wechseln"): "wiederholen_alle_tage": 0.
+WIEDERKEHRENDE Pflege bis zur Erholung (z. B. "Blätter besprühen", "Blätter mit feuchtem Tuch abwischen",
+"Erdfeuchte mit dem Finger prüfen", "Auf Schädlinge kontrollieren", "Mit Schmierseifenlösung behandeln") als EIN Eintrag mit
+"wiederholen_alle_tage" (1 = täglich, 2 = jeden 2. Tag, 3, 7 = wöchentlich …) und "bis_tag" (0 = bis zum Kontrolltermin,
+sonst Tage ab heute, max. 60). Wähle die Häufigkeit fachlich richtig für diese Art und Jahreszeit – nicht öfter als nötig.
 Bei gesunden/natürlichen Pflanzen nur 0–2 sanfte Pflegeaufgaben.
 "kontrolle_in_tagen": wann ein neues Kontrollfoto sinnvoll ist (stark: 2–4, mittel: 5–7, leicht: 7–14, gesund/natürlich: 21–30).
 "kontrolle_foto": was genau dann fotografiert werden soll.
@@ -135,7 +140,8 @@ Wenn für eine praktische Frage kein passendes Foto vorliegt (z. B. Schnitt, abe
 "rueckfragen" um ein konkretes Foto ("Mach bitte ein Foto vom ganzen Strauch von der Seite").
 
 AUFGABEN: Wenn aus der Antwort Termine folgen (z. B. "Ende Februar zurückschneiden", "ab März alle 2 Wochen düngen"),
-gib sie in "aufgaben" mit konkretem "datum" (JJJJ-MM-TT, ab heute) an – max. 4.
+gib sie in "aufgaben" mit konkretem "datum" (JJJJ-MM-TT, ab heute) an – max. 4. Regelmäßige Maßnahmen mit
+"wiederholen_alle_tage" (z. B. 14 = alle 2 Wochen düngen) und "bis_datum" (JJJJ-MM-TT, z. B. Ende der Saison); einmalige mit 0.
 
 Antworte AUSSCHLIESSLICH mit gültigem JSON:
 {
@@ -143,7 +149,7 @@ Antworte AUSSCHLIESSLICH mit gültigem JSON:
   "schritte": [ { "titel": "", "details": "" } ],
   "markierungen": { "bild": 1, "punkte": [ { "y": 0, "x": 0, "label": "1", "text": "" } ] },
   "skizze_svg": "",
-  "aufgaben": [ { "datum": "JJJJ-MM-TT", "titel": "", "details": "" } ],
+  "aufgaben": [ { "datum": "JJJJ-MM-TT", "titel": "", "details": "", "wiederholen_alle_tage": 0, "bis_datum": "" } ],
   "sicherheit": 0,
   "pruefung": "",
   "rueckfragen": [ "" ]
@@ -383,7 +389,7 @@ export function normalizeDiagnosis(r = {}) {
     symptome: arr(r.symptome).map(str).filter(Boolean),
     ursachen: arr(r.ursachen).filter((u) => u && u.titel).map((u) => ({ titel: str(u.titel), erklaerung: str(u.erklaerung), wahrscheinlichkeit: clamp(u.wahrscheinlichkeit, 0, 100) })).sort((a, b) => b.wahrscheinlichkeit - a.wahrscheinlichkeit),
     massnahmen: arr(r.massnahmen).filter((m) => m && m.titel).map((m) => ({ titel: str(m.titel), details: str(m.details), dringend: !!m.dringend })),
-    behandlungsplan: arr(r.behandlungsplan).filter((b) => b && b.titel).map((b) => ({ tag: clamp(b.tag, 0, 60), titel: str(b.titel), details: str(b.details) })).slice(0, 10),
+    behandlungsplan: arr(r.behandlungsplan).filter((b) => b && b.titel).map((b) => ({ tag: clamp(b.tag, 0, 60), titel: str(b.titel), details: str(b.details), wiederholen_alle_tage: clamp(b.wiederholen_alle_tage, 0, 30), bis_tag: clamp(b.bis_tag, 0, 60) })).slice(0, 10),
     kontrolle_in_tagen: clamp(r.kontrolle_in_tagen ?? 7, 0, 90),
     kontrolle_foto: str(r.kontrolle_foto),
     rueckfragen: arr(r.rueckfragen).map(str).filter(Boolean),
@@ -407,7 +413,7 @@ function normalizeAnswer(r = {}) {
     },
     // SVG wird später nur als <img> angezeigt – darin laufen keine Skripte.
     skizze_svg: /^<svg[\s>]/i.test(svg) && svg.length < 30000 && !/<script|foreignObject|href\s*=\s*["']?(?!#)/i.test(svg) ? svg : '',
-    aufgaben: arr(r.aufgaben).filter((a) => a && a.titel && isValidISO(a.datum) && a.datum >= today()).map((a) => ({ datum: a.datum, titel: str(a.titel), details: str(a.details) })).slice(0, 4),
+    aufgaben: arr(r.aufgaben).filter((a) => a && a.titel && isValidISO(a.datum) && a.datum >= today()).map((a) => ({ datum: a.datum, titel: str(a.titel), details: str(a.details), wiederholen_alle_tage: clamp(a.wiederholen_alle_tage, 0, 60), bis_datum: isValidISO(a.bis_datum) && a.bis_datum >= a.datum ? a.bis_datum : '' })).slice(0, 4),
     sicherheit: clamp(r.sicherheit, 0, 100),
     pruefung: str(r.pruefung),
     rueckfragen: arr(r.rueckfragen).map(str).filter(Boolean),
