@@ -307,3 +307,28 @@ details summary { cursor: pointer; padding: 4px 0; }
 .series { padding: 6px 0 6px 34px; }
 .series .badge, .task .badge { margin-left: 4px; vertical-align: 1px; }
 .why { margin-top: 4px; font-size: .8rem; color: var(--green-800); background: var(--mint-50); border-radius: 10px; padding: 6px 10px; }
+
+/* Offene Aufgaben (Übersicht) */
+.todo { padding: 0; overflow: hidden; }
+.todo summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 16px 18px; cursor: pointer; }
+.todo summary::-webkit-details-marker { display: none; }
+.todo-icon svg { color: var(--green-600); }
+.todo.has-items .todo-icon svg { color: var(--warn-ink); }
+.todo-title { flex: 1; font-weight: 700; color: var(--green-800); }
+.todo-count { min-width: 26px; height: 26px; padding: 0 8px; border-radius: 999px; background: #D98E80; color: #fff; font-weight: 700; font-size: .85rem; display: grid; place-items: center; }
+.todo-count.zero { background: var(--mint-100); color: var(--green-800); }
+.todo-chev svg { color: var(--grey-500); transition: transform .2s; }
+.todo[open] .todo-chev svg { transform: rotate(90deg); }
+.todo-list, .todo > p { padding: 0 12px 12px; }
+.todo-item { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; border: 0; background: var(--mint-50); border-radius: var(--radius-sm); padding: 10px; margin-top: 8px; color: var(--ink); }
+.todo-item img { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; flex-shrink: 0; align-self: flex-start; }
+.todo-item > svg { color: var(--grey-500); }
+.todo-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.todo-body b { color: var(--green-800); }
+.todo-line { font-size: .88rem; }
+.todo-line.checkup { color: var(--bad-ink); font-weight: 600; }
+.todo-line .sub { color: var(--grey-500); font-size: .8rem; }
+.tabbar button { position: relative; }
+.tab-count { position: absolute; top: 0; right: 14px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #D98E80; color: #fff; font-size: .68rem; font-weight: 700; display: grid; place-items: center; }
+.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--mint-500); } 100% { box-shadow: var(--shadow); } }

@@ -15,7 +15,7 @@ import {
   syncReminders, scheduleSync, isStandalone, pushSupported, repeatLabel, occursOn, isDoneOn, isActive, nextOccurrence,
 } from './reminders.js';
 
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.3.0';
 const MAX_PHOTOS = 3;
 const LOCATIONS = ['Wohnung', 'Balkon / Terrasse', 'Garten', 'Gewächshaus'];
 const STATUS_LABEL = { gesund: 'Gesund', natuerlich: 'Natürlicher Vorgang', leicht: 'Leichte Probleme', mittel: 'Braucht Hilfe', stark: 'Dringend handeln' };
@@ -61,11 +61,17 @@ async function render() {
   $('#btn-back').hidden = isRoot;
   $('#tabbar').classList.toggle('hidden', !isRoot);
   $$('#tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.nav === r.name));
+  allPlants().then((ps) => { const n = dueItems(ps).length; const c = $('#tab-count'); if (c) { c.textContent = n; c.hidden = !n; } });
   switch (r.name) {
     case 'plants': return renderPlants(v);
     case 'plant': {
       if (r.params[1] === 'checkup') return nav(`scan/${r.params[0]}`);
-      return renderPlant(v, r.params[0]);
+      await renderPlant(v, r.params[0]);
+      if (r.params[1] === 'plan') {
+        const el = $('#plan-card');
+        if (el) { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -70); el.classList.add('flash'); }
+      }
+      return;
     }
     case 'scan': return renderHome(v, r.params[0]);
     case 'visit': return renderVisit(v, r.params[0], r.params[1]);
@@ -198,7 +204,7 @@ async function renderHome(v, plantId) {
   $('#go-setup')?.addEventListener('click', () => nav('settings'));
   $('#go-push')?.addEventListener('click', () => nav('settings'));
   $('#hide-push-hint')?.addEventListener('click', () => { store.set('fm.pushHintHidden', true); render(); });
-  $$('[data-plant]', v).forEach((li) => li.addEventListener('click', () => nav(`plant/${li.dataset.plant}`)));
+  $$('[data-plant]', v).forEach((li) => li.addEventListener('click', () => nav(`plant/${li.dataset.plant}/plan`)));
   $('#take-photo').addEventListener('click', () => addPhotos('camera'));
   $('#pick-photo').addEventListener('click', () => addPhotos('gallery'));
   $$('[data-add]', v).forEach((b) => b.addEventListener('click', () => addPhotos('camera')));
@@ -278,9 +284,34 @@ function applyResultToPlant(p, visit) {
  * ------------------------------------------------------------------ */
 async function renderPlants(v) {
   const plants = (await allPlants()).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const due = dueItems(plants);
+  const groups = [];
+  for (const d of due) {
+    let g = groups.find((x) => x.plant.id === d.plant.id);
+    if (!g) groups.push(g = { plant: d.plant, items: [] });
+    g.items.push(d);
+  }
+  const isOpen = store.get('fm.todoOpen', true);
   v.innerHTML = `
     <h1 style="margin:8px 0 4px">Meine Pflanzen</h1>
     <p class="small muted" style="margin-bottom:14px">${plants.length ? `${plants.length} Patient${plants.length > 1 ? 'en' : ''} in deiner Pflanzenpraxis` : ''}</p>
+    ${plants.length ? `
+    <details class="card todo ${due.length ? 'has-items' : ''}" id="todo" ${isOpen ? 'open' : ''}>
+      <summary>
+        <span class="todo-icon">${ICON.bell}</span>
+        <span class="todo-title">Offene Aufgaben</span>
+        <span class="todo-count ${due.length ? '' : 'zero'}">${due.length || '✓'}</span>
+        <span class="todo-chev">${ICON.chevron}</span>
+      </summary>
+      ${groups.length ? `<div class="todo-list">${groups.map((g) => `
+        <button class="todo-item" data-goto="plant/${g.plant.id}${g.items.some((x) => x.kind === 'task') ? '/plan' : ''}">
+          <img src="${g.plant.cover}" alt="">
+          <span class="todo-body"><b>${esc(g.plant.name)}</b>
+            ${g.items.map((x) => `<span class="todo-line ${x.kind === 'checkup' ? 'checkup' : ''}">${x.kind === 'checkup' ? '📸 Kontrolltermin – neues Foto machen' : `• ${esc(x.task.titel)}${x.task.repeat ? ` <span class="sub">(${repeatLabel(x.task.repeat)})</span>` : ''}`}${daysUntil(x.date) < 0 ? ` <span class="sub">· seit ${fmtDate(x.date)}</span>` : ''}</span>`).join('')}
+          </span>${ICON.chevron}
+        </button>`).join('')}</div>`
+        : '<p class="small muted" style="padding:4px 2px 2px">Heute ist alles erledigt. Deine Pflanzen danken es dir! 🌿</p>'}
+    </details>` : ''}
     ${plants.length ? plants.map((p) => {
       const n = nextInfo(p);
       return `<button class="hist-item" data-open="${p.id}">
@@ -293,6 +324,8 @@ async function renderPlants(v) {
       </button>`;
     }).join('') : `<div class="empty">${ICON.leaf}<p>Noch keine Pflanzen.<br>Untersuche deine erste Pflanze!</p></div>`}
     <button class="btn secondary" id="new-plant" style="margin-top:8px">${ICON.plus}Neue Pflanze untersuchen</button>`;
+  $('#todo')?.addEventListener('toggle', (e) => store.set('fm.todoOpen', e.target.open));
+  $$('[data-goto]', v).forEach((b) => b.addEventListener('click', () => nav(b.dataset.goto)));
   $$('[data-open]', v).forEach((b) => b.addEventListener('click', () => nav(`plant/${b.dataset.open}`)));
   $('#new-plant').addEventListener('click', () => nav('home'));
 }
@@ -342,7 +375,7 @@ async function renderPlant(v, id) {
       ${ps.enabled ? `<p class="small muted" style="margin-top:8px">${ICON.bell.replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-2px"')} Du bekommst eine Erinnerung um ${esc(ps.time)} Uhr.</p>` : ''}
     </div>
 
-    <div class="card">
+    <div class="card" id="plan-card">
       <div class="card-head">${ICON.bulb}<h3>Behandlungsplan</h3></div>
       ${todayItems.length ? `<div class="plan-day today"><div class="plan-date">Heute</div>${todayItems.map((t) => taskRow(t, d0)).join('')}</div>` : ''}
       ${series.length ? `<div class="plan-day"><div class="plan-date">Regelmäßig bis zur Erholung</div>

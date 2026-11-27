@@ -3,7 +3,7 @@
  *   Offline wird die zuletzt gespeicherte Version genutzt.
  * - Empfängt Push-Mitteilungen (Erinnerungen) und öffnet beim Antippen die passende Pflanze.
  */
-const CACHE_VERSION = 'floramedici-v2.2.1';
+const CACHE_VERSION = 'floramedici-v2.3.0';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/main.js', 'js/util.js', 'js/db.js', 'js/ai.js', 'js/reminders.js',
